@@ -11,6 +11,7 @@ import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
+import '../../ai_goal/presentation/ai_goal_sheet.dart';
 import '../../milestones/providers/milestone_provider.dart';
 import '../../tasks/providers/task_provider.dart';
 import '../providers/goal_provider.dart';
@@ -86,10 +87,34 @@ class GoalsScreen extends ConsumerWidget {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'goals_fab',
-        onPressed: () => _openCreate(context, ref),
-        child: const Icon(Icons.add),
+      floatingActionButton: Container(
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
+          ),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: const Color(0xFF5B9CF6).withOpacity(0.35),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: FloatingActionButton.extended(
+          heroTag: 'goals_fab',
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          onPressed: () => _showOptions(context, ref),
+          icon: const Icon(Icons.auto_awesome, color: Colors.white),
+          label: const Text(
+            'New Goal',
+            style: TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
       ).animate().scale(delay: 200.ms),
     );
   }
@@ -100,6 +125,63 @@ class GoalsScreen extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => const CreateEditGoalSheet(),
+    );
+  }
+
+  Future<void> _openAi(BuildContext context) async {
+    final goalId = await showAiGoalSheet(context);
+    if (!context.mounted || goalId == null) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🎉 Goal created! Start working on it.')),
+    );
+    context.go('/goals/$goalId');
+  }
+
+  void _showOptions(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: cs.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
+                ).createShader(bounds),
+                child: const Icon(Icons.auto_awesome, color: Colors.white),
+              ),
+              title: const Text(
+                '✦ Generate with AI',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              subtitle: const Text('Describe your goal, AI builds the plan'),
+              onTap: () {
+                Navigator.pop(context);
+                _openAi(context);
+              },
+            ),
+            Divider(color: cs.outline),
+            ListTile(
+              leading: Icon(Icons.edit_outlined, color: cs.onSurfaceVariant),
+              title: const Text('Create Manually'),
+              subtitle: const Text('Set up your own goal and milestones'),
+              onTap: () {
+                Navigator.pop(context);
+                _openCreate(context, ref);
+              },
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'core/services/notification_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/schedule/data/schedule_repository.dart';
 import 'features/settings/providers/settings_provider.dart';
+import 'core/services/shared_preferences_provider.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,7 +27,15 @@ Future<void> main() async {
   final allScheduleItems = await ScheduleRepository.instance.getAll();
   await NotificationService.instance
       .syncScheduleNotifications(allScheduleItems);
-  runApp(const ProviderScope(child: RoadmapXApp()));
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        sharedPreferencesProvider.overrideWithValue(prefs),
+      ],
+      child: const RoadmapXApp(),
+    ),
+  );
 }
 
 class RoadmapXApp extends ConsumerWidget {

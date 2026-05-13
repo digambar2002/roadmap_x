@@ -7,6 +7,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
+import '../../ai_goal/presentation/ai_goal_sheet.dart';
 import '../../dashboard/providers/dashboard_provider.dart';
 import '../../schedule/providers/schedule_provider.dart';
 import '../../settings/providers/settings_provider.dart';
@@ -66,6 +67,20 @@ class DashboardScreen extends ConsumerWidget {
                       ),
                       const SizedBox(height: 12),
                       _QuoteCard(quote: quote),
+                      const SizedBox(height: 10),
+                      _AiQuickAction(
+                        onPressed: () async {
+                          final goalId = await showAiGoalSheet(context);
+                          if (!context.mounted || goalId == null) return;
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('🎉 Goal created! Start working on it.'),
+                            ),
+                          );
+                          context.go('/goals/$goalId');
+                        },
+                      ),
                     ],
                   ),
                 ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05),
@@ -170,6 +185,29 @@ class DashboardScreen extends ConsumerWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _AiQuickAction extends StatelessWidget {
+  const _AiQuickAction({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: ActionChip(
+        avatar: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
+          ).createShader(bounds),
+          child: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
+        ),
+        label: const Text('✦ Generate with AI'),
+        onPressed: onPressed,
       ),
     );
   }

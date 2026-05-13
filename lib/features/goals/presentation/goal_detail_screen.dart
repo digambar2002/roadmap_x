@@ -389,7 +389,7 @@ class _GoalHeroHeader extends ConsumerWidget {
 
 // ── Milestones list ───────────────────────────────────────
 
-class _MilestonesList extends ConsumerWidget {
+class _MilestonesList extends ConsumerStatefulWidget {
   final int goalId;
   final Color goalColor;
   final VoidCallback onMilestoneComplete;
@@ -401,8 +401,15 @@ class _MilestonesList extends ConsumerWidget {
   });
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final msAsync = ref.watch(milestonesForGoalProvider(goalId));
+  ConsumerState<_MilestonesList> createState() => _MilestonesListState();
+}
+
+class _MilestonesListState extends ConsumerState<_MilestonesList> {
+  final Map<int, bool> _expanded = {};
+
+  @override
+  Widget build(BuildContext context) {
+    final msAsync = ref.watch(milestonesForGoalProvider(widget.goalId));
 
     return msAsync.when(
       loading: () => const SliverToBoxAdapter(
@@ -424,24 +431,29 @@ class _MilestonesList extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
           sliver: SliverReorderableList(
             itemCount: milestones.length,
-            proxyDecorator: (child, index, animation) =>
-                Material(color: Colors.transparent, child: child),
             onReorder: (oldIndex, newIndex) async {
+              final list = [...milestones];
               if (newIndex > oldIndex) newIndex--;
-              final reordered = List<Milestone>.from(milestones);
-              final item = reordered.removeAt(oldIndex);
-              reordered.insert(newIndex, item);
-              await MilestoneRepository.instance.reorder(reordered);
+              final item = list.removeAt(oldIndex);
+              list.insert(newIndex, item);
+              await MilestoneRepository.instance.reorder(list);
             },
-            itemBuilder: (context, i) => ReorderableDragStartListener(
-              key: ValueKey(milestones[i].id),
-              index: i,
-              child: _MilestoneCard(
-                milestone: milestones[i],
-                goalColor: goalColor,
-                onComplete: onMilestoneComplete,
-              ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
-            ),
+            itemBuilder: (context, i) {
+              final ms = milestones[i];
+              return ReorderableDelayedDragStartListener(
+                key: ValueKey(ms.id),
+                index: i,
+                child: _MilestoneCard(
+                  milestone: ms,
+                  goalColor: widget.goalColor,
+                  onComplete: widget.onMilestoneComplete,
+                  isExpanded: _expanded[ms.id] ?? false,
+                  onToggle: () => setState(
+                    () => _expanded[ms.id] = !(_expanded[ms.id] ?? false),
+                  ),
+                ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
+              );
+            },
           ),
         );
       },
@@ -451,35 +463,31 @@ class _MilestonesList extends ConsumerWidget {
 
 // ── Milestone card ────────────────────────────────────────
 
-class _MilestoneCard extends ConsumerStatefulWidget {
+class _MilestoneCard extends ConsumerWidget {
   final Milestone milestone;
   final Color goalColor;
   final VoidCallback onComplete;
+  final bool isExpanded;
+  final VoidCallback onToggle;
 
   const _MilestoneCard({
     required this.milestone,
     required this.goalColor,
     required this.onComplete,
+    required this.isExpanded,
+    required this.onToggle,
   });
 
   @override
-  ConsumerState<_MilestoneCard> createState() => _MilestoneCardState();
-}
-
-class _MilestoneCardState extends ConsumerState<_MilestoneCard> {
-  bool _expanded = true;
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
     final tasksAsync =
-        ref.watch(tasksForMilestoneProvider(widget.milestone.id));
+        ref.watch(tasksForMilestoneProvider(milestone.id));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Slidable(
-        key: ValueKey(widget.milestone.id),
+        key: ValueKey(milestone.id),
         endActionPane: ActionPane(
           motion: const DrawerMotion(),
           children: [
@@ -506,25 +514,25 @@ class _MilestoneCardState extends ConsumerState<_MilestoneCard> {
               InkWell(
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(14)),
-                onTap: () => setState(() => _expanded = !_expanded),
+                onTap: onToggle,
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: tasksAsync.when(
                     loading: () => _MilestoneHeader(
-                      milestone: widget.milestone,
-                      goalColor: widget.goalColor,
-                      expanded: _expanded,
+                      milestone: milestone,
+                      goalColor: goalColor,
+                      expanded: isExpanded,
                       done: 0,
                       total: 0,
                     ),
-                    error: (_, __) => Text(widget.milestone.title),
+                    error: (_, __) => Text(milestone.title),
                     data: (tasks) {
                       final done = tasks.where((t) => t.isCompleted).length;
                       final total = tasks.length;
                       return _MilestoneHeader(
-                        milestone: widget.milestone,
-                        goalColor: widget.goalColor,
-                        expanded: _expanded,
+                        milestone: milestone,
+                        goalColor: goalColor,
+                        expanded: isExpanded,
                         done: done,
                         total: total,
                       );
@@ -534,25 +542,25 @@ class _MilestoneCardState extends ConsumerState<_MilestoneCard> {
               ),
 
               // ── Tasks ────────────────────────────────────────
-              AnimatedCrossFade(
-                firstChild: const SizedBox.shrink(),
-                secondChild: tasksAsync.when(
-                  loading: () => const Padding(
-                    padding: EdgeInsets.all(16),
-                    child: CircularProgressIndicator(),
-                  ),
-                  error: (_, __) => const SizedBox.shrink(),
-                  data: (tasks) => _TasksList(
-                    tasks: tasks,
-                    milestone: widget.milestone,
-                    goalColor: widget.goalColor,
-                    onComplete: widget.onComplete,
-                  ),
-                ),
-                crossFadeState: _expanded
-                    ? CrossFadeState.showSecond
-                    : CrossFadeState.showFirst,
-                duration: const Duration(milliseconds: 200),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                alignment: Alignment.topCenter,
+                child: isExpanded
+                    ? tasksAsync.when(
+                        loading: () => const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(),
+                        ),
+                        error: (_, __) => const SizedBox.shrink(),
+                        data: (tasks) => _TasksList(
+                          tasks: tasks,
+                          milestone: milestone,
+                          goalColor: goalColor,
+                          onComplete: onComplete,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ),
@@ -566,10 +574,10 @@ class _MilestoneCardState extends ConsumerState<_MilestoneCard> {
       context,
       title: 'Delete Milestone',
       message:
-          'Delete "${widget.milestone.title}" and all its tasks? This cannot be undone.',
+          'Delete "${milestone.title}" and all its tasks? This cannot be undone.',
     );
     if (ok) {
-      await MilestoneRepository.instance.delete(widget.milestone.id);
+      await MilestoneRepository.instance.delete(milestone.id);
     }
   }
 }
@@ -673,30 +681,30 @@ class _TasksList extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Divider(height: 1, color: cs.outline),
-        ReorderableListView(
+        ReorderableListView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          proxyDecorator: (child, index, animation) =>
-              Material(color: Colors.transparent, child: child),
+          buildDefaultDragHandles: false,
           onReorder: (oldIndex, newIndex) async {
+            final list = [...tasks];
             if (newIndex > oldIndex) newIndex--;
-            final reordered = List<Task>.from(tasks);
-            final item = reordered.removeAt(oldIndex);
-            reordered.insert(newIndex, item);
-            await TaskRepository.instance.reorder(reordered);
+            final item = list.removeAt(oldIndex);
+            list.insert(newIndex, item);
+            await TaskRepository.instance.reorder(list);
           },
-          children: tasks.asMap().entries.map<Widget>((e) {
-            final i = e.key;
-            final task = e.value;
-            return KeyedSubtree(
+          itemCount: tasks.length,
+          itemBuilder: (context, i) {
+            final task = tasks[i];
+            return ReorderableDelayedDragStartListener(
               key: ValueKey(task.id),
+              index: i,
               child: _TaskRow(
                 task: task,
                 goalColor: goalColor,
                 onComplete: onComplete,
               ).animate().fadeIn(delay: (i * 20).ms),
             );
-          }).toList(),
+          },
         ),
         // Add task button
         Padding(
@@ -813,6 +821,7 @@ class _TaskRow extends ConsumerWidget {
                   child:
                       Icon(Icons.notes, size: 14, color: cs.onSurfaceVariant),
                 ),
+
             ],
           ),
         ),
