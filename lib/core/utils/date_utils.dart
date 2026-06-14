@@ -39,6 +39,9 @@ class AppDateUtils {
 
   static bool isToday(DateTime date) => isSameDay(date, DateTime.now());
 
+  static DateTime normalizeDate(DateTime date) =>
+      DateTime(date.year, date.month, date.day);
+
   static int weekdayIndex(DateTime date) =>
       date.weekday % 7; // 0=Sunday, 1=Monday, ..., 6=Saturday
 

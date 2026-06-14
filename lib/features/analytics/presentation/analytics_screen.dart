@@ -1,8 +1,12 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
+
 import '../../../shared/widgets/progress_ring.dart';
+import '../../ai_coach/presentation/ai_weekly_review_section.dart';
+import '../providers/activity_provider.dart';
 import '../providers/analytics_provider.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
@@ -17,58 +21,70 @@ class AnalyticsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: cs.background,
       body: SafeArea(
-        child: dataAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (data) => ListView(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
-            children: [
-              Text('Analytics',
-                      style: tt.headlineMedium
-                          ?.copyWith(fontWeight: FontWeight.w700))
-                  .animate()
-                  .fadeIn(),
+        child: RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(analyticsDataProvider);
+            bumpActivityTick(ref);
+          },
+          child: dataAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Center(child: Text('Error: $e')),
+            data: (data) => ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
+              children: [
+                Text(
+                  'Stats',
+                  style: tt.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ).animate().fadeIn(),
 
-              const SizedBox(height: 20),
-
-              // ── This week summary ─────────────────────────
-              _WeekSummaryCard(data: data)
-                  .animate()
-                  .fadeIn(delay: 80.ms)
-                  .slideY(begin: 0.05),
-
-              const SizedBox(height: 20),
-
-              // ── 7-day bar chart ───────────────────────────
-              _BarChartCard(data: data)
-                  .animate()
-                  .fadeIn(delay: 120.ms)
-                  .slideY(begin: 0.05),
-
-              const SizedBox(height: 20),
-
-              // ── Per-goal breakdown ────────────────────────
-              if (data.goalStats.isNotEmpty) ...[
-                Text('Goals Breakdown',
-                        style: tt.titleMedium
-                            ?.copyWith(fontWeight: FontWeight.w700))
-                    .animate()
-                    .fadeIn(delay: 160.ms),
-                const SizedBox(height: 12),
-                ...data.goalStats.asMap().entries.map(
-                      (e) => _GoalStatRow(stat: e.value)
-                          .animate()
-                          .fadeIn(delay: ((160 + e.key * 40)).ms),
-                    ),
                 const SizedBox(height: 20),
-              ],
 
-              // ── Monthly heatmap ───────────────────────────
-              _MonthlyHeatmap(data: data)
-                  .animate()
-                  .fadeIn(delay: 240.ms)
-                  .slideY(begin: 0.05),
-            ],
+                AiWeeklyReviewSection(data: data)
+                    .animate()
+                    .fadeIn(delay: 60.ms)
+                    .slideY(begin: 0.05),
+
+                const SizedBox(height: 20),
+
+                _WeekSummaryCard(data: data)
+                    .animate()
+                    .fadeIn(delay: 80.ms)
+                    .slideY(begin: 0.05),
+
+                const SizedBox(height: 20),
+
+                _BarChartCard(data: data)
+                    .animate()
+                    .fadeIn(delay: 120.ms)
+                    .slideY(begin: 0.05),
+
+                const SizedBox(height: 20),
+
+                if (data.goalStats.isNotEmpty) ...[
+                  Text(
+                    'Goals Breakdown',
+                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ).animate().fadeIn(delay: 160.ms),
+                  const SizedBox(height: 12),
+                  ...data.goalStats.asMap().entries.map(
+                        (e) => _GoalStatRow(
+                          stat: e.value,
+                          onTap: () =>
+                              context.push('/goals/${e.value.goal.id}'),
+                        ).animate().fadeIn(delay: (160 + e.key * 40).ms),
+                      ),
+                  const SizedBox(height: 20),
+                ],
+
+                _MonthlyHeatmap(data: data)
+                    .animate()
+                    .fadeIn(delay: 240.ms)
+                    .slideY(begin: 0.05),
+              ],
+            ),
           ),
         ),
       ),
@@ -92,16 +108,27 @@ class _WeekSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant,
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            cs.primary.withOpacity(0.10),
+            cs.surfaceContainerHighest,
+          ],
+        ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('This Week',
-              style: tt.titleSmall?.copyWith(
-                  color: cs.onSurfaceVariant, fontWeight: FontWeight.w600)),
+          Text(
+            'This Week',
+            style: tt.titleSmall?.copyWith(
+              color: cs.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
           const SizedBox(height: 12),
           Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -113,8 +140,10 @@ class _WeekSummaryCard extends StatelessWidget {
               const SizedBox(width: 8),
               Padding(
                 padding: const EdgeInsets.only(bottom: 4),
-                child: Text('tasks done',
-                    style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant)),
+                child: Text(
+                  'activities',
+                  style: tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
+                ),
               ),
               const Spacer(),
               if (data.lastWeekDone > 0)
@@ -173,6 +202,7 @@ class _WeekSummaryCard extends StatelessWidget {
 class _StatChip extends StatelessWidget {
   final String label;
   final String value;
+
   const _StatChip({required this.label, required this.value});
 
   @override
@@ -180,7 +210,7 @@ class _StatChip extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10),
         decoration: BoxDecoration(
           color: cs.surface,
           borderRadius: BorderRadius.circular(10),
@@ -188,12 +218,16 @@ class _StatChip extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(value,
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+            ),
             const SizedBox(height: 2),
-            Text(label,
-                style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)),
+            Text(
+              label,
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -211,7 +245,10 @@ class _BarChartCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final max = data.last7Days.reduce((a, b) => a > b ? a : b).toDouble();
+    final maxVal = data.last7Days.isEmpty
+        ? 0
+        : data.last7Days.reduce((a, b) => a > b ? a : b);
+    final max = maxVal.toDouble();
 
     final now = DateTime.now();
     const dayLabels = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -223,15 +260,17 @@ class _BarChartCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outline),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Last 7 Days',
-              style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+          Text(
+            'Last 7 Days',
+            style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+          ),
           const SizedBox(height: 20),
           SizedBox(
             height: 150,
@@ -245,17 +284,22 @@ class _BarChartCard extends StatelessWidget {
                       showTitles: true,
                       getTitlesWidget: (v, _) => Text(
                         labels[v.toInt()],
-                        style:
-                            TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: cs.onSurfaceVariant,
+                        ),
                       ),
                     ),
                   ),
                   leftTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   rightTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                   topTitles: const AxisTitles(
-                      sideTitles: SideTitles(showTitles: false)),
+                    sideTitles: SideTitles(showTitles: false),
+                  ),
                 ),
                 gridData: FlGridData(
                   show: true,
@@ -273,11 +317,13 @@ class _BarChartCard extends StatelessWidget {
                     barRods: [
                       BarChartRodData(
                         toY: data.last7Days[i].toDouble(),
-                        color:
-                            i == 6 ? cs.primary : cs.primary.withOpacity(0.4),
+                        color: i == 6
+                            ? cs.primary
+                            : cs.primary.withOpacity(0.4),
                         width: 20,
                         borderRadius: const BorderRadius.vertical(
-                            top: Radius.circular(6)),
+                          top: Radius.circular(6),
+                        ),
                       ),
                     ],
                   ),
@@ -295,7 +341,9 @@ class _BarChartCard extends StatelessWidget {
 
 class _GoalStatRow extends StatelessWidget {
   final GoalStat stat;
-  const _GoalStatRow({required this.stat});
+  final VoidCallback onTap;
+
+  const _GoalStatRow({required this.stat, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
@@ -305,54 +353,66 @@ class _GoalStatRow extends StatelessWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: cs.surfaceVariant,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: cs.outline),
-        ),
-        child: Row(
-          children: [
-            ProgressRing(
-              percent: stat.percent,
-              color: color,
-              size: 44,
-              strokeWidth: 4,
-              child: Text(
-                '${(stat.percent * 100).toInt()}%',
-                style: TextStyle(
-                    fontSize: 9, fontWeight: FontWeight.w700, color: color),
-              ),
+      child: Material(
+        color: cs.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              border: Border.all(color: cs.outline),
+              borderRadius: BorderRadius.circular(14),
             ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            child: Row(
+              children: [
+                ProgressRing(
+                  percent: stat.percent,
+                  color: color,
+                  size: 44,
+                  strokeWidth: 4,
+                  child: Text(
+                    '${(stat.percent * 100).toInt()}%',
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(stat.goal.emoji),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          stat.goal.name,
-                          style: tt.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600),
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      Row(
+                        children: [
+                          Text(stat.goal.emoji),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              stat.goal.name,
+                              style: tt.bodyMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${stat.done}/${stat.total} tasks',
+                        style: tt.bodySmall,
                       ),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${stat.done}/${stat.total} tasks',
-                    style: tt.bodySmall,
-                  ),
-                ],
-              ),
+                ),
+                Icon(Icons.chevron_right, color: cs.onSurfaceVariant),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -378,7 +438,7 @@ class _MonthlyHeatmap extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: cs.surfaceVariant,
+        color: cs.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: cs.outline),
       ),
@@ -387,8 +447,10 @@ class _MonthlyHeatmap extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Activity',
-                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+              Text(
+                'Activity',
+                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+              ),
               const SizedBox(width: 8),
               Text(
                 '${_monthName(now.month)} ${now.year}',
@@ -450,7 +512,7 @@ class _MonthlyHeatmap extends StatelessWidget {
       'Sep',
       'Oct',
       'Nov',
-      'Dec'
+      'Dec',
     ];
     return names[m];
   }

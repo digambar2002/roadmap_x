@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/services/backup_service.dart';
 
 class AiSettingsRepository {
   static const _keyApiKey = 'gemini_api_key';
@@ -14,10 +15,12 @@ class AiSettingsRepository {
 
   Future<void> saveApiKey(String key) async {
     await _prefs.setString(_keyApiKey, key.trim());
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> saveModel(String model) async {
     await _prefs.setString(_keyModel, model);
+    await BackupService.instance.scheduleBackup();
   }
 
   String? getApiKey() => _prefs.getString(_keyApiKey);
@@ -37,5 +40,6 @@ class AiSettingsRepository {
 
   Future<void> clearApiKey() async {
     await _prefs.remove(_keyApiKey);
+    await BackupService.instance.scheduleBackup();
   }
 }

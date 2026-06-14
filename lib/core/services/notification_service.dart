@@ -4,13 +4,16 @@ import 'package:intl/intl.dart';
 import 'package:timezone/data/latest.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:workmanager/workmanager.dart';
+import '../db/isar_service.dart';
 import '../models/models.dart';
+import 'backup_service.dart';
 
 /// Background callback for workmanager - must be a top-level function.
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
+      await IsarService.instance.init();
       await NotificationService.instance.init();
 
       if (task == 'daily_reminder') {
@@ -23,6 +26,8 @@ void callbackDispatcher() {
       } else if (task == 'schedule_prior') {
         final label = inputData?['label'] ?? 'Event';
         await NotificationService.instance._showPriorNotification(label);
+      } else if (task == 'auto_backup') {
+        await BackupService.instance.performAutoBackup();
       }
       return true;
     } catch (e) {
@@ -39,6 +44,7 @@ class NotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
   static const _schedulePayloadPrefix = 'schedule:';
+  static const _taskDuePayloadPrefix = 'task_due:';
 
   Future<void> init() async {
     if (_initialized) return;
@@ -197,6 +203,72 @@ class NotificationService {
     }
   }
 
+  Future<void> syncTaskDueNotifications(
+    List<Task> tasks, {
+    bool enabled = true,
+  }) async {
+    if (!_initialized) {
+      await init();
+    }
+    await _cancelTaskDueNotifications();
+    if (!enabled) return;
+
+    final granted = await requestPermission();
+    if (!granted) return;
+    for (final task in tasks) {
+      if (task.isCompleted || task.dueDate == null) continue;
+      final due = task.dueDate!;
+      if (!due.isAfter(DateTime.now())) continue;
+
+      final dueTz = tz.TZDateTime.from(due, tz.local);
+      final id = 4000000 + task.id;
+
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          'Task due: ${task.text}',
+          'Due now',
+          dueTz,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'task_due',
+              'Task Due',
+              channelDescription: 'Task due date reminders',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+          payload: '$_taskDuePayloadPrefix${task.id}',
+          androidScheduleMode: AndroidScheduleMode.exact,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      } catch (_) {
+        await _plugin.zonedSchedule(
+          id,
+          'Task due: ${task.text}',
+          'Due now',
+          dueTz,
+          const NotificationDetails(
+            android: AndroidNotificationDetails(
+              'task_due',
+              'Task Due',
+              channelDescription: 'Task due date reminders',
+              importance: Importance.max,
+              priority: Priority.high,
+            ),
+            iOS: DarwinNotificationDetails(),
+          ),
+          payload: '$_taskDuePayloadPrefix${task.id}',
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+        );
+      }
+    }
+  }
+
   Future<void> _scheduleViaZonedSchedule(
     int eventId,
     int priorId,
@@ -340,6 +412,15 @@ class NotificationService {
     final pending = await _plugin.pendingNotificationRequests();
     for (final req in pending) {
       if (req.payload?.startsWith(_schedulePayloadPrefix) ?? false) {
+        await _plugin.cancel(req.id);
+      }
+    }
+  }
+
+  Future<void> _cancelTaskDueNotifications() async {
+    final pending = await _plugin.pendingNotificationRequests();
+    for (final req in pending) {
+      if (req.payload?.startsWith(_taskDuePayloadPrefix) ?? false) {
         await _plugin.cancel(req.id);
       }
     }

@@ -62,9 +62,10 @@ class _BottomNav extends StatelessWidget {
 
   static const _items = [
     _NavItem(icon: Icons.home_rounded, label: 'Home'),
+    _NavItem(icon: Icons.today_rounded, label: 'Today'),
     _NavItem(icon: Icons.flag_rounded, label: 'Goals'),
     _NavItem(icon: Icons.calendar_month_rounded, label: 'Schedule'),
-    _NavItem(icon: Icons.bar_chart_rounded, label: 'Analytics'),
+    _NavItem(icon: Icons.bar_chart_rounded, label: 'Stats'),
   ];
 
   @override

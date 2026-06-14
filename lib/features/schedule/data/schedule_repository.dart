@@ -1,7 +1,8 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
+import '../../../core/services/backup_service.dart';
 import '../../../core/services/notification_service.dart';
 
 class ScheduleRepository {
@@ -53,17 +54,20 @@ class ScheduleRepository {
 
     await _db.writeTxn(() async => _db.scheduleItems.put(item));
     await _resyncNotifications();
+    await BackupService.instance.scheduleBackup();
     return item;
   }
 
   Future<void> update(ScheduleItem item) async {
     await _db.writeTxn(() async => _db.scheduleItems.put(item));
     await _resyncNotifications();
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> delete(int id) async {
     await _db.writeTxn(() async => _db.scheduleItems.delete(id));
     await _resyncNotifications();
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<int> _nextSortOrder() async {

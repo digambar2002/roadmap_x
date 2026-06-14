@@ -1,6 +1,6 @@
 // All Isar data models are defined in this single file
 // to avoid cross-file circular import issues with isar_generator.
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 
 part 'models.g.dart';
 

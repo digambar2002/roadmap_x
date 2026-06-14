@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/models/models.dart';
+import '../../../core/models/today_task.dart';
+import '../../../core/services/schedule_completion_service.dart';
+import '../../tasks/data/task_repository.dart';
 import '../../../shared/widgets/bottom_sheet_handle.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../../shared/widgets/custom_button.dart';
@@ -19,11 +23,15 @@ class ScheduleScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final selectedDay = ref.watch(selectedWeekdayProvider);
+    final selectedDate = ref.watch(selectedScheduleDateProvider);
+    final selectedDay = selectedDate.weekday % 7;
     final scheduleAsync = ref.watch(scheduleForWeekdayProvider(selectedDay));
 
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    final today = DateTime.now().weekday % 7;
+    final now = DateTime.now();
+    final todayDate = DateTime(now.year, now.month, now.day);
+    final today = todayDate.weekday % 7;
+    final weekStart = todayDate.subtract(Duration(days: todayDate.weekday % 7));
 
     return Scaffold(
       backgroundColor: cs.background,
@@ -46,8 +54,14 @@ class ScheduleScreen extends ConsumerWidget {
                 dayNames: dayNames,
                 selectedDay: selectedDay,
                 today: today,
-                onSelect: (i) =>
-                    ref.read(selectedWeekdayProvider.notifier).state = i,
+                weekStart: weekStart,
+                onSelect: (i) {
+                  ref.read(selectedScheduleDateProvider.notifier).state = DateTime(
+                        weekStart.year,
+                        weekStart.month,
+                        weekStart.day + i,
+                      );
+                },
               ),
             ).animate().fadeIn(delay: 80.ms),
 
@@ -64,7 +78,7 @@ class ScheduleScreen extends ConsumerWidget {
                         buttonLabel: '+ Add Item',
                         onButton: () => _openCreate(context),
                       )
-                    : _ScheduleList(items: items),
+                    : _ScheduleList(items: items, selectedDate: selectedDate),
               ),
             ),
           ],
@@ -92,12 +106,14 @@ class _DaySelectorTabs extends StatelessWidget {
   final List<String> dayNames;
   final int selectedDay;
   final int today;
+  final DateTime weekStart;
   final ValueChanged<int> onSelect;
 
   const _DaySelectorTabs({
     required this.dayNames,
     required this.selectedDay,
     required this.today,
+    required this.weekStart,
     required this.onSelect,
   });
 
@@ -142,10 +158,10 @@ class _DaySelectorTabs extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    dayNames[i],
+                    '${dayNames[i]}\n${weekStart.day + i}',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w700,
                       color: selected ? Colors.white : cs.onBackground,
                     ),
@@ -164,7 +180,8 @@ class _DaySelectorTabs extends StatelessWidget {
 
 class _ScheduleList extends StatelessWidget {
   final List<ScheduleItem> items;
-  const _ScheduleList({required this.items});
+  final DateTime selectedDate;
+  const _ScheduleList({required this.items, required this.selectedDate});
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +191,8 @@ class _ScheduleList extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: sorted.length,
-      itemBuilder: (context, i) => _ScheduleItemCard(item: sorted[i])
+      itemBuilder: (context, i) =>
+          _ScheduleItemCard(item: sorted[i], selectedDate: selectedDate)
           .animate()
           .fadeIn(delay: (i * 40).ms)
           .slideY(begin: 0.05),
@@ -199,7 +217,11 @@ class _ScheduleList extends StatelessWidget {
 
 class _ScheduleItemCard extends ConsumerStatefulWidget {
   final ScheduleItem item;
-  const _ScheduleItemCard({required this.item});
+  final DateTime selectedDate;
+  const _ScheduleItemCard({
+    required this.item,
+    required this.selectedDate,
+  });
 
   @override
   ConsumerState<_ScheduleItemCard> createState() => _ScheduleItemCardState();
@@ -207,6 +229,20 @@ class _ScheduleItemCard extends ConsumerStatefulWidget {
 
 class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
   bool _expanded = false;
+  List<TodayTaskContext> _linkedTasks = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLinkedTasks();
+  }
+
+  Future<void> _loadLinkedTasks() async {
+    if (widget.item.goalUid.isEmpty) return;
+    final tasks = await TaskRepository.instance
+        .getNextTasksForGoal(widget.item.goalUid, limit: 3);
+    if (mounted) setState(() => _linkedTasks = tasks);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -214,8 +250,11 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
     final tt = Theme.of(context).textTheme;
 
     final goalsAsync = ref.watch(allGoalsProvider);
+    final completedAsync =
+        ref.watch(scheduleCompletedUidsProvider(widget.selectedDate));
     Color accentColor = cs.primary;
     String? goalName;
+    Goal? linkedGoal;
 
     if (widget.item.goalUid.isNotEmpty) {
       goalsAsync.whenData((goals) {
@@ -223,6 +262,7 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
           final g = goals.firstWhere((g) => g.uid == widget.item.goalUid);
           accentColor = Color(g.colorHex);
           goalName = g.name;
+          linkedGoal = g;
         } catch (_) {}
       });
     }
@@ -275,6 +315,21 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
                         children: [
                           Row(
                             children: [
+                              Checkbox(
+                                value: completedAsync.valueOrNull
+                                        ?.contains(widget.item.uid) ??
+                                    false,
+                                onChanged: (v) async {
+                                  await ScheduleCompletionService.instance
+                                      .setCompleted(
+                                    widget.selectedDate,
+                                    widget.item.uid,
+                                    v ?? false,
+                                  );
+                                  ref.invalidate(scheduleCompletedUidsProvider(
+                                      widget.selectedDate));
+                                },
+                              ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
                                     horizontal: 8, vertical: 3),
@@ -315,7 +370,11 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
                               Text(widget.item.detail, style: tt.bodySmall),
                             if (goalName != null) ...[
                               const SizedBox(height: 6),
-                              Row(
+                              GestureDetector(
+                                onTap: linkedGoal == null
+                                    ? null
+                                    : () => context.push('/focus/${linkedGoal!.id}'),
+                                child: Row(
                                 children: [
                                   Icon(Icons.flag_outlined,
                                       size: 13, color: accentColor),
@@ -326,7 +385,37 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
                                         color: accentColor,
                                         fontWeight: FontWeight.w500,
                                       )),
+                                  const Spacer(),
+                                  if (linkedGoal != null)
+                                    Text(
+                                      'Focus →',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: accentColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                 ],
+                              ),
+                              ),
+                            ],
+                            if (_linkedTasks.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text('Next tasks',
+                                  style: tt.labelMedium?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  )),
+                              const SizedBox(height: 4),
+                              ..._linkedTasks.map(
+                                (ctx) => Padding(
+                                  padding: const EdgeInsets.only(bottom: 2),
+                                  child: Text(
+                                    '• ${ctx.task.text}',
+                                    style: tt.bodySmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
                             ],
                             const SizedBox(height: 8),

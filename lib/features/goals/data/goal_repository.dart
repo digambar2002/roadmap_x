@@ -1,7 +1,8 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
+import '../../../core/services/backup_service.dart';
 
 class GoalRepository {
   GoalRepository._();
@@ -54,6 +55,7 @@ class GoalRepository {
     await _db.writeTxn(() async {
       await _db.goals.put(goal);
     });
+    await BackupService.instance.scheduleBackup();
     return goal;
   }
 
@@ -61,6 +63,7 @@ class GoalRepository {
     await _db.writeTxn(() async {
       await _db.goals.put(goal);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> archive(int id) async {
@@ -68,6 +71,7 @@ class GoalRepository {
     if (goal == null) return;
     goal.isArchived = true;
     await _db.writeTxn(() async => _db.goals.put(goal));
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> unarchive(int id) async {
@@ -75,6 +79,7 @@ class GoalRepository {
     if (goal == null) return;
     goal.isArchived = false;
     await _db.writeTxn(() async => _db.goals.put(goal));
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> delete(int id) async {
@@ -96,6 +101,7 @@ class GoalRepository {
       await _db.milestones.deleteAll(milestoneIds);
       await _db.goals.delete(id);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> reorder(List<Goal> goals) async {
@@ -105,6 +111,7 @@ class GoalRepository {
       }
       await _db.goals.putAll(goals);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<int> _nextSortOrder() async {

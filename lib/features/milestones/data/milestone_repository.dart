@@ -1,7 +1,8 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
+import '../../../core/services/backup_service.dart';
 
 class MilestoneRepository {
   MilestoneRepository._();
@@ -51,6 +52,7 @@ class MilestoneRepository {
       await _db.milestones.put(ms);
       await ms.goal.save();
     });
+    await BackupService.instance.scheduleBackup();
     return ms;
   }
 
@@ -58,6 +60,7 @@ class MilestoneRepository {
     await _db.writeTxn(() async {
       await _db.milestones.put(ms);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> delete(int id) async {
@@ -70,6 +73,7 @@ class MilestoneRepository {
       await _db.tasks.deleteAll(taskIds);
       await _db.milestones.delete(id);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> reorder(List<Milestone> milestones) async {
@@ -79,6 +83,7 @@ class MilestoneRepository {
       }
       await _db.milestones.putAll(milestones);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<int> _nextSortOrder(int goalId) async {

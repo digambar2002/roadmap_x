@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
+import '../../../core/services/backup_service.dart';
 import '../../../core/services/data_export_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../tasks/data/task_repository.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
+import '../../ai_coach/providers/ai_coach_provider.dart';
+import '../providers/backup_provider.dart';
 import '../providers/ai_settings_provider.dart';
 import '../providers/settings_provider.dart';
 
@@ -76,19 +81,41 @@ class SettingsScreen extends ConsumerWidget {
             _SectionHeader('Notifications').animate().fadeIn(delay: 190.ms),
             _NotificationTile(
               enabled: settings.dailyReminderEnabled,
+              reminderHour: settings.dailyReminderHour,
+              reminderMinute: settings.dailyReminderMinute,
+              taskDueNotificationsEnabled: settings.taskDueNotificationsEnabled,
               onChanged: (value) => _toggleDailyReminder(context, ref, value),
+              onReminderTimeChanged: (h, m) async {
+                await notifier.setDailyReminderTime(h, m);
+                if (settings.dailyReminderEnabled) {
+                  await NotificationService.instance.scheduleDailyReminder(
+                    hour: h,
+                    minute: m,
+                  );
+                }
+              },
+              onTaskDueNotificationsChanged: (v) async {
+                await notifier.setTaskDueNotificationsEnabled(v);
+                final tasks = await TaskRepository.instance.getAll();
+                await NotificationService.instance.syncTaskDueNotifications(
+                  tasks,
+                  enabled: v,
+                );
+              },
             ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.05),
 
             const SizedBox(height: 24),
 
             // ── Data ──────────────────────────────────────
             _SectionHeader('Data').animate().fadeIn(delay: 210.ms),
+            const _BackupSection().animate().fadeIn(delay: 220.ms),
+            const SizedBox(height: 8),
             _ActionTile(
-              label: 'Export Data',
-              subtitle: 'Save a JSON backup to your device.',
-              icon: Icons.upload_outlined,
-              onTap: () => _export(context),
-            ).animate().fadeIn(delay: 220.ms),
+              label: 'Import Backup JSON',
+              subtitle: 'Paste JSON from clipboard and import.',
+              icon: Icons.download_outlined,
+              onTap: () => _importFromClipboard(context),
+            ).animate().fadeIn(delay: 225.ms),
             const SizedBox(height: 8),
             _DangerTile(
               label: 'Clear All Data',
@@ -113,23 +140,6 @@ class SettingsScreen extends ConsumerWidget {
         ),
       ),
     );
-  }
-
-  Future<void> _export(BuildContext context) async {
-    try {
-      final path = await DataExportService.instance.exportToJson();
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported to: $path')),
-        );
-      }
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e')),
-        );
-      }
-    }
   }
 
   Future<void> _clearAll(BuildContext context, WidgetRef ref) async {
@@ -171,6 +181,7 @@ class SettingsScreen extends ConsumerWidget {
     bool enabled,
   ) async {
     final notifier = ref.read(settingsProvider.notifier);
+    final settings = ref.read(settingsProvider).valueOrNull;
 
     if (enabled) {
       final granted = await NotificationService.instance.requestPermission();
@@ -187,8 +198,8 @@ class SettingsScreen extends ConsumerWidget {
       }
 
       await NotificationService.instance.scheduleDailyReminder(
-        hour: 9,
-        minute: 0,
+        hour: settings?.dailyReminderHour ?? 9,
+        minute: settings?.dailyReminderMinute ?? 0,
       );
       await notifier.setDailyReminderEnabled(true);
       return;
@@ -196,6 +207,40 @@ class SettingsScreen extends ConsumerWidget {
 
     await NotificationService.instance.cancelDailyReminder();
     await notifier.setDailyReminderEnabled(false);
+  }
+
+  Future<void> _importFromClipboard(BuildContext context) async {
+    try {
+      final data = await Clipboard.getData('text/plain');
+      final text = data?.text?.trim();
+      if (text == null || text.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Clipboard is empty.')),
+          );
+        }
+        return;
+      }
+      final result = await BackupService.instance.withoutScheduling(
+        () => DataExportService.instance.importFromJson(text),
+      );
+      await BackupService.instance.restorePreferences(result.preferences);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Imported ${result.counts.total} records with settings.',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
   }
 }
 
@@ -217,6 +262,35 @@ class _SectionHeader extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: cs.onSurfaceVariant,
           letterSpacing: 1.2,
+        ),
+      ),
+    );
+  }
+}
+
+/// Material-backed surface for settings cards so ListTile ink/splash renders.
+class _SettingsSurface extends StatelessWidget {
+  const _SettingsSurface({
+    required this.child,
+    this.padding,
+  });
+
+  final Widget child;
+  final EdgeInsetsGeometry? padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outline),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: Material(
+          color: cs.surfaceContainerHighest,
+          child: padding == null ? child : Padding(padding: padding!, child: child),
         ),
       ),
     );
@@ -291,12 +365,7 @@ class _ThemeTile extends StatelessWidget {
       Icons.phone_android_outlined
     ];
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
+    return _SettingsSurface(
       child: Column(
         children: List.generate(modes.length, (i) {
           final selected = current == modes[i];
@@ -380,9 +449,22 @@ class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
 
 class _NotificationTile extends StatelessWidget {
   final bool enabled;
+  final int reminderHour;
+  final int reminderMinute;
+  final bool taskDueNotificationsEnabled;
   final ValueChanged<bool> onChanged;
+  final void Function(int hour, int minute) onReminderTimeChanged;
+  final ValueChanged<bool> onTaskDueNotificationsChanged;
 
-  const _NotificationTile({required this.enabled, required this.onChanged});
+  const _NotificationTile({
+    required this.enabled,
+    required this.reminderHour,
+    required this.reminderMinute,
+    required this.taskDueNotificationsEnabled,
+    required this.onChanged,
+    required this.onReminderTimeChanged,
+    required this.onTaskDueNotificationsChanged,
+  });
 
   void _showTestNotification(BuildContext context) async {
     try {
@@ -427,13 +509,10 @@ class _NotificationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final formattedTime =
+        TimeOfDay(hour: reminderHour, minute: reminderMinute).format(context);
 
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
+    return _SettingsSurface(
       child: Column(
         children: [
           SwitchListTile(
@@ -443,6 +522,30 @@ class _NotificationTile extends StatelessWidget {
             subtitle: const Text('Get a daily nudge to check on your goals.'),
             value: enabled,
             onChanged: onChanged,
+          ),
+          ListTile(
+            leading: Icon(Icons.access_time, color: cs.onSurfaceVariant),
+            title: const Text('Reminder time'),
+            subtitle: Text(formattedTime),
+            onTap: () async {
+              final picked = await showTimePicker(
+                context: context,
+                initialTime: TimeOfDay(
+                  hour: reminderHour,
+                  minute: reminderMinute,
+                ),
+              );
+              if (picked != null) {
+                onReminderTimeChanged(picked.hour, picked.minute);
+              }
+            },
+          ),
+          SwitchListTile(
+            secondary: Icon(Icons.task_alt, color: cs.onSurfaceVariant),
+            title: const Text('Task due notifications'),
+            subtitle: const Text('Receive alerts for due and overdue tasks.'),
+            value: taskDueNotificationsEnabled,
+            onChanged: onTaskDueNotificationsChanged,
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
@@ -482,6 +585,131 @@ class _NotificationTile extends StatelessWidget {
 
 // ── Action tile ───────────────────────────────────────────
 
+class _BackupSection extends ConsumerWidget {
+  const _BackupSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final backupAsync = ref.watch(backupProvider);
+    final notifier = ref.read(backupProvider.notifier);
+    final isBusy = backupAsync.valueOrNull?.isBusy ?? false;
+
+    return _SettingsSurface(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Backup & Restore',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Create a backup now or restore the latest backup.',
+            style: TextStyle(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.tonalIcon(
+                  onPressed: isBusy
+                      ? null
+                      : () async {
+                          final path = await notifier.createBackupNow();
+                          if (!context.mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                path == null
+                                    ? 'Backup failed.'
+                                    : 'Backup saved: $path',
+                              ),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.backup_outlined),
+                  label: const Text('Backup Now'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: isBusy
+                      ? null
+                      : () async {
+                          final mode = await _pickImportMode(context);
+                          if (mode == null) return;
+                          final counts =
+                              await BackupService.instance.withoutScheduling(
+                            () => notifier.restoreLatest(mode: mode),
+                          );
+                          if (!context.mounted) return;
+                          if (counts == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                  content: Text('No backup found to restore.')),
+                            );
+                            return;
+                          }
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Restored ${counts.total} records, ${counts.preferences} preferences.',
+                              ),
+                            ),
+                          );
+                        },
+                  icon: const Icon(Icons.restore_outlined),
+                  label: const Text('Restore Latest'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            backupAsync.valueOrNull?.lastBackupAt == null
+                ? 'No backup created yet.'
+                : 'Last backup: ${backupAsync.valueOrNull!.lastBackupAt}',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<ImportMode?> _pickImportMode(BuildContext context) async {
+    final cs = Theme.of(context).colorScheme;
+    return showModalBottomSheet<ImportMode>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Material(
+          color: cs.surface,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.merge_type),
+                title: const Text('Merge'),
+                subtitle:
+                    const Text('Keep existing data and add missing records.'),
+                onTap: () => Navigator.of(context).pop(ImportMode.merge),
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_sweep_outlined),
+                title: const Text('Replace'),
+                subtitle: const Text('Clear existing data then import backup.'),
+                onTap: () => Navigator.of(context).pop(ImportMode.replace),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ActionTile extends StatelessWidget {
   final String label;
   final String subtitle;
@@ -497,12 +725,7 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
+    return _SettingsSurface(
       child: ListTile(
         leading: Icon(icon, color: cs.primary),
         title: Text(label),
@@ -533,12 +756,7 @@ class _DangerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
+    return _SettingsSurface(
       child: ListTile(
         leading: Icon(icon, color: color),
         title: Text(label, style: TextStyle(color: color)),
@@ -607,13 +825,8 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
       _apiKeyCtrl.text = ai.apiKey!;
     }
 
-    return Container(
+    return _SettingsSurface(
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -640,9 +853,12 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
                   child: const Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.check_circle, size: 14, color: Color(0xFF34D399)),
+                      Icon(Icons.check_circle,
+                          size: 14, color: Color(0xFF34D399)),
                       SizedBox(width: 4),
-                      Text('Saved', style: TextStyle(fontSize: 11, color: Color(0xFF34D399))),
+                      Text('Saved',
+                          style: TextStyle(
+                              fontSize: 11, color: Color(0xFF34D399))),
                     ],
                   ),
                 ),
@@ -667,7 +883,8 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
                 hintText: 'Paste your API key',
                 prefixIcon: const Icon(Icons.key_outlined),
                 suffixIcon: IconButton(
-                  icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility),
+                  icon:
+                      Icon(_obscure ? Icons.visibility_off : Icons.visibility),
                   onPressed: () => setState(() => _obscure = !_obscure),
                 ),
               ),
@@ -698,6 +915,7 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
                     final key = _apiKeyCtrl.text.trim();
                     if (key.isEmpty) return;
                     await notifier.saveApiKey(key);
+                    refreshAiCoachAfterSettingsChange(ref);
                     if (mounted) {
                       setState(() => _editing = false);
                     }
@@ -716,6 +934,7 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
                 onPressed: hasKey
                     ? () async {
                         await notifier.clearApiKey();
+                        refreshAiCoachAfterSettingsChange(ref);
                         if (mounted) {
                           setState(() {
                             _editing = false;
@@ -740,7 +959,8 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
             isExpanded: true,
-            value: _models.containsKey(ai.model) ? ai.model : 'gemini-2.5-flash',
+            value:
+                _models.containsKey(ai.model) ? ai.model : 'gemini-2.5-flash',
             decoration: const InputDecoration(
               prefixIcon: Icon(Icons.psychology_alt_outlined),
             ),
@@ -783,13 +1003,8 @@ class _AboutTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    return Container(
+    return _SettingsSurface(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: cs.surfaceVariant,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: cs.outline),
-      ),
       child: Row(
         children: [
           Container(

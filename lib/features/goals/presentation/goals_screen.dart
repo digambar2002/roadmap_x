@@ -17,6 +17,7 @@ import '../../tasks/providers/task_provider.dart';
 import '../providers/goal_provider.dart';
 import '../data/goal_repository.dart';
 import 'widgets/create_edit_goal_sheet.dart';
+import 'widgets/goal_template_sheet.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -166,6 +167,20 @@ class GoalsScreen extends ConsumerWidget {
               onTap: () {
                 Navigator.pop(context);
                 _openAi(context);
+              },
+            ),
+            Divider(color: cs.outline),
+            ListTile(
+              leading: Icon(Icons.library_books_outlined,
+                  color: cs.onSurfaceVariant),
+              title: const Text('Use Template'),
+              subtitle: const Text('Create from proven goal structure'),
+              onTap: () async {
+                Navigator.pop(context);
+                final goalId = await showGoalTemplateSheet(context);
+                if (goalId != null && context.mounted) {
+                  context.go('/goals/$goalId');
+                }
               },
             ),
             Divider(color: cs.outline),

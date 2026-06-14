@@ -5,8 +5,6 @@ import 'gemini_service.dart';
 
 final geminiServiceProvider = Provider<GeminiService?>((ref) {
   final settings = ref.watch(aiSettingsNotifierProvider);
-  if (!ref.watch(aiSettingsRepositoryProvider).hasApiKey) return null;
-
   final key = settings.apiKey;
   if (key == null || key.isEmpty) return null;
 

@@ -13,6 +13,10 @@ import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
+import '../../ai_coach/presentation/adjust_plan_sheet.dart';
+import '../../ai_coach/presentation/coach_chat_sheet.dart';
+import '../../ai_coach/presentation/goal_coach_section.dart';
+import '../../ai_coach/providers/ai_coach_provider.dart';
 import '../../goals/data/goal_repository.dart';
 import '../../goals/presentation/widgets/create_edit_goal_sheet.dart';
 import '../../goals/providers/goal_provider.dart';
@@ -49,7 +53,6 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
     final goalAsync = ref.watch(goalByIdProvider(widget.goalId));
 
     return goalAsync.when(
@@ -91,6 +94,7 @@ class _GoalDetailBody extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final goalColor = Color(goal.colorHex);
+    final hasAiCoach = ref.watch(hasAiCoachProvider);
 
     return Scaffold(
       backgroundColor: cs.background,
@@ -108,6 +112,23 @@ class _GoalDetailBody extends ConsumerWidget {
                   onPressed: () => context.pop(),
                 ),
                 actions: [
+                  IconButton(
+                    icon: const Icon(Icons.center_focus_strong_outlined),
+                    tooltip: 'Focus Mode',
+                    onPressed: () => context.push('/focus/${goal.id}'),
+                  ),
+                  if (hasAiCoach) ...[
+                    IconButton(
+                      icon: const Icon(Icons.chat_bubble_outline_rounded),
+                      tooltip: 'Coach Chat',
+                      onPressed: () => showCoachChatSheet(context, goal.id),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.auto_fix_high_outlined),
+                      tooltip: 'Adjust Plan',
+                      onPressed: () => showAdjustPlanSheet(context, goal.id),
+                    ),
+                  ],
                   IconButton(
                     icon: const Icon(Icons.edit_outlined),
                     onPressed: () => showModalBottomSheet(
@@ -144,6 +165,13 @@ class _GoalDetailBody extends ConsumerWidget {
                     goal: goal,
                     goalColor: goalColor,
                   ),
+                ),
+              ),
+
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                  child: GoalCoachSection(goalId: goal.id),
                 ),
               ),
 

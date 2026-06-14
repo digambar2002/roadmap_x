@@ -1,18 +1,37 @@
 import 'dart:convert';
-import 'dart:io';
-import 'package:isar/isar.dart';
-import 'package:path_provider/path_provider.dart';
+
+import 'package:isar_community/isar.dart';
+
 import '../db/isar_service.dart';
 import '../models/models.dart';
-import 'package:uuid/uuid.dart';
+
+enum ImportMode { merge, replace }
+
+class ImportCounts {
+  const ImportCounts({
+    this.goals = 0,
+    this.milestones = 0,
+    this.tasks = 0,
+    this.scheduleItems = 0,
+    this.preferences = 0,
+  });
+
+  final int goals;
+  final int milestones;
+  final int tasks;
+  final int scheduleItems;
+  final int preferences;
+
+  int get total => goals + milestones + tasks + scheduleItems;
+}
 
 class DataExportService {
   DataExportService._();
   static final instance = DataExportService._();
 
-  /// Export all data to a JSON string and save to the downloads-equivalent folder.
-  /// Returns the file path on success.
-  Future<String> exportToJson() async {
+  Future<Map<String, dynamic>> exportData({
+    required Map<String, dynamic> preferences,
+  }) async {
     final db = IsarService.instance.db;
 
     final goals = await db.goals.where().build().findAll();
@@ -20,209 +39,263 @@ class DataExportService {
     final tasks = await db.tasks.where().build().findAll();
     final scheduleItems = await db.scheduleItems.where().build().findAll();
 
-    // Load links
-    for (final g in goals) {
-      await g.milestones.load();
+    for (final goal in goals) {
+      await goal.milestones.load();
     }
-    for (final ms in milestones) {
-      await ms.tasks.load();
-      await ms.goal.load();
+    for (final milestone in milestones) {
+      await milestone.goal.load();
+      await milestone.tasks.load();
     }
-    for (final t in tasks) {
-      await t.milestone.load();
+    for (final task in tasks) {
+      await task.milestone.load();
     }
 
-    final data = {
-      'version': 1,
+    return {
+      'version': 2,
       'exportedAt': DateTime.now().toIso8601String(),
+      'preferences': preferences,
       'goals': goals
-          .map((g) => {
-                'uid': g.uid,
-                'name': g.name,
-                'description': g.description,
-                'emoji': g.emoji,
-                'colorHex': g.colorHex,
-                'createdAt': g.createdAt.toIso8601String(),
-                'targetDate': g.targetDate.toIso8601String(),
-                'isArchived': g.isArchived,
-                'sortOrder': g.sortOrder,
-              })
+          .map(
+            (goal) => {
+              'uid': goal.uid,
+              'name': goal.name,
+              'description': goal.description,
+              'emoji': goal.emoji,
+              'colorHex': goal.colorHex,
+              'createdAt': goal.createdAt.toIso8601String(),
+              'targetDate': goal.targetDate.toIso8601String(),
+              'isArchived': goal.isArchived,
+              'sortOrder': goal.sortOrder,
+            },
+          )
           .toList(),
       'milestones': milestones
-          .map((ms) => {
-                'uid': ms.uid,
-                'goalUid': ms.goal.value?.uid ?? '',
-                'title': ms.title,
-                'theme': ms.theme,
-                'dueDate': ms.dueDate?.toIso8601String(),
-                'sortOrder': ms.sortOrder,
-                'isCollapsed': ms.isCollapsed,
-              })
+          .map(
+            (milestone) => {
+              'uid': milestone.uid,
+              'goalUid': milestone.goal.value?.uid ?? '',
+              'title': milestone.title,
+              'theme': milestone.theme,
+              'dueDate': milestone.dueDate?.toIso8601String(),
+              'sortOrder': milestone.sortOrder,
+              'isCollapsed': milestone.isCollapsed,
+            },
+          )
           .toList(),
       'tasks': tasks
-          .map((t) => {
-                'uid': t.uid,
-                'milestoneUid': t.milestone.value?.uid ?? '',
-                'text': t.text,
-                'isCompleted': t.isCompleted,
-                'dueDate': t.dueDate?.toIso8601String(),
-                'priority': t.priority,
-                'note': t.note,
-                'createdAt': t.createdAt.toIso8601String(),
-                'completedAt': t.completedAt?.toIso8601String(),
-                'sortOrder': t.sortOrder,
-              })
+          .map(
+            (task) => {
+              'uid': task.uid,
+              'milestoneUid': task.milestone.value?.uid ?? '',
+              'text': task.text,
+              'isCompleted': task.isCompleted,
+              'dueDate': task.dueDate?.toIso8601String(),
+              'priority': task.priority,
+              'note': task.note,
+              'createdAt': task.createdAt.toIso8601String(),
+              'completedAt': task.completedAt?.toIso8601String(),
+              'sortOrder': task.sortOrder,
+            },
+          )
           .toList(),
       'scheduleItems': scheduleItems
-          .map((s) => {
-                'uid': s.uid,
-                'time': s.time,
-                'label': s.label,
-                'detail': s.detail,
-                'goalUid': s.goalUid,
-                'weekdays': s.weekdays,
-                'isActive': s.isActive,
-                'sortOrder': s.sortOrder,
-              })
+          .map(
+            (item) => {
+              'uid': item.uid,
+              'time': item.time,
+              'label': item.label,
+              'detail': item.detail,
+              'goalUid': item.goalUid,
+              'weekdays': item.weekdays,
+              'isActive': item.isActive,
+              'sortOrder': item.sortOrder,
+            },
+          )
           .toList(),
     };
-
-    final dir = await getApplicationDocumentsDirectory();
-    final ts = DateTime.now()
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .replaceAll('.', '-');
-    final file = File('${dir.path}/roadmapx_backup_$ts.json');
-    await file.writeAsString(jsonEncode(data));
-    return file.path;
   }
 
-  /// Import data from a JSON string. Merges by uid (skips existing).
-  Future<int> importFromJson(String jsonStr) async {
-    final db = IsarService.instance.db;
-    final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+  Future<String> exportToJson({
+    required Map<String, dynamic> preferences,
+  }) async {
+    final data = await exportData(preferences: preferences);
+    return jsonEncode(data);
+  }
 
-    int imported = 0;
+  Future<({ImportCounts counts, Map<String, dynamic> preferences})>
+      importFromJson(
+    String jsonString, {
+    ImportMode mode = ImportMode.merge,
+  }) async {
+    final decoded = jsonDecode(jsonString) as Map<String, dynamic>;
+    return importFromMap(decoded, mode: mode);
+  }
+
+  Future<({ImportCounts counts, Map<String, dynamic> preferences})>
+      importFromMap(
+    Map<String, dynamic> data, {
+    ImportMode mode = ImportMode.merge,
+  }) async {
+    final db = IsarService.instance.db;
+    final preferences =
+        (data['preferences'] as Map?)?.cast<String, dynamic>() ??
+            <String, dynamic>{};
+
+    final goalsData = (data['goals'] as List<dynamic>? ?? const <dynamic>[]);
+    final milestonesData =
+        (data['milestones'] as List<dynamic>? ?? const <dynamic>[]);
+    final tasksData = (data['tasks'] as List<dynamic>? ?? const <dynamic>[]);
+    final scheduleData =
+        (data['scheduleItems'] as List<dynamic>? ?? const <dynamic>[]);
+
+    var goalsImported = 0;
+    var milestonesImported = 0;
+    var tasksImported = 0;
+    var scheduleImported = 0;
 
     await db.writeTxn(() async {
-      // Goals
-      final existingGoalUids =
-          (await db.goals.where().build().findAll()).map((g) => g.uid).toSet();
-
-      final goalsData = (data['goals'] as List<dynamic>? ?? []);
-      final newGoals = <Goal>[];
-      for (final gd in goalsData) {
-        final uid = gd['uid'] as String;
-        if (existingGoalUids.contains(uid)) continue;
-        final g = Goal()
-          ..uid = uid
-          ..name = gd['name'] as String
-          ..description = gd['description'] as String? ?? ''
-          ..emoji = gd['emoji'] as String? ?? '🎯'
-          ..colorHex = gd['colorHex'] as int
-          ..createdAt = DateTime.parse(gd['createdAt'] as String)
-          ..targetDate = DateTime.parse(gd['targetDate'] as String)
-          ..isArchived = gd['isArchived'] as bool? ?? false
-          ..sortOrder = gd['sortOrder'] as int? ?? 0;
-        newGoals.add(g);
-        imported++;
+      if (mode == ImportMode.replace) {
+        await db.tasks.clear();
+        await db.milestones.clear();
+        await db.goals.clear();
+        await db.scheduleItems.clear();
       }
-      await db.goals.putAll(newGoals);
 
-      // Build uid→id map for goals
+      final existingGoalUids = (await db.goals.where().build().findAll())
+          .map((goal) => goal.uid)
+          .toSet();
+      final newGoals = <Goal>[];
+      for (final raw in goalsData) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final uid = (item['uid'] as String?) ?? '';
+        if (uid.isEmpty || existingGoalUids.contains(uid)) continue;
+
+        final goal = Goal()
+          ..uid = uid
+          ..name = (item['name'] as String?) ?? ''
+          ..description = (item['description'] as String?) ?? ''
+          ..emoji = (item['emoji'] as String?) ?? '🎯'
+          ..colorHex = (item['colorHex'] as int?) ?? 0xFF4F46E5
+          ..createdAt =
+              DateTime.tryParse((item['createdAt'] as String?) ?? '') ??
+                  DateTime.now()
+          ..targetDate =
+              DateTime.tryParse((item['targetDate'] as String?) ?? '') ??
+                  DateTime.now()
+          ..isArchived = (item['isArchived'] as bool?) ?? false
+          ..sortOrder = (item['sortOrder'] as int?) ?? 0;
+        newGoals.add(goal);
+      }
+      if (newGoals.isNotEmpty) {
+        await db.goals.putAll(newGoals);
+        goalsImported += newGoals.length;
+      }
+
       final goalUidToId = {
-        for (final g in await db.goals.where().build().findAll()) g.uid: g.id
+        for (final goal in await db.goals.where().build().findAll())
+          goal.uid: goal.id,
       };
 
-      // Milestones
-      final existingMsUids = (await db.milestones.where().build().findAll())
-          .map((m) => m.uid)
-          .toSet();
+      final existingMilestoneUids =
+          (await db.milestones.where().build().findAll())
+              .map((milestone) => milestone.uid)
+              .toSet();
+      for (final raw in milestonesData) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final uid = (item['uid'] as String?) ?? '';
+        if (uid.isEmpty || existingMilestoneUids.contains(uid)) continue;
 
-      final msData = (data['milestones'] as List<dynamic>? ?? []);
-      for (final md in msData) {
-        final uid = md['uid'] as String;
-        if (existingMsUids.contains(uid)) continue;
-        final goalUid = md['goalUid'] as String? ?? '';
+        final goalUid = (item['goalUid'] as String?) ?? '';
         final goalId = goalUidToId[goalUid];
         if (goalId == null) continue;
-        final ms = Milestone()
+
+        final milestone = Milestone()
           ..uid = uid
-          ..title = md['title'] as String
-          ..theme = md['theme'] as String? ?? ''
-          ..dueDate = md['dueDate'] != null
-              ? DateTime.parse(md['dueDate'] as String)
-              : null
-          ..sortOrder = md['sortOrder'] as int? ?? 0
-          ..isCollapsed = md['isCollapsed'] as bool? ?? false;
-        await db.milestones.put(ms);
-        ms.goal.value = await db.goals.get(goalId);
-        await ms.goal.save();
-        imported++;
+          ..title = (item['title'] as String?) ?? ''
+          ..theme = (item['theme'] as String?) ?? ''
+          ..dueDate = DateTime.tryParse((item['dueDate'] as String?) ?? '')
+          ..sortOrder = (item['sortOrder'] as int?) ?? 0
+          ..isCollapsed = (item['isCollapsed'] as bool?) ?? false;
+        await db.milestones.put(milestone);
+        milestone.goal.value = await db.goals.get(goalId);
+        await milestone.goal.save();
+        milestonesImported++;
       }
 
-      // Build uid→id map for milestones
-      final msUidToId = {
-        for (final ms in await db.milestones.where().build().findAll())
-          ms.uid: ms.id
+      final milestoneUidToId = {
+        for (final milestone in await db.milestones.where().build().findAll())
+          milestone.uid: milestone.id,
       };
 
-      // Tasks
-      final existingTaskUids =
-          (await db.tasks.where().build().findAll()).map((t) => t.uid).toSet();
-
-      final tasksData = (data['tasks'] as List<dynamic>? ?? []);
-      for (final td in tasksData) {
-        final uid = td['uid'] as String;
-        if (existingTaskUids.contains(uid)) continue;
-        final msUid = td['milestoneUid'] as String? ?? '';
-        final msId = msUidToId[msUid];
-        if (msId == null) continue;
-        final t = Task()
-          ..uid = uid
-          ..text = td['text'] as String
-          ..isCompleted = td['isCompleted'] as bool? ?? false
-          ..dueDate = td['dueDate'] != null
-              ? DateTime.parse(td['dueDate'] as String)
-              : null
-          ..priority = td['priority'] as int? ?? 0
-          ..note = td['note'] as String?
-          ..createdAt = DateTime.parse(td['createdAt'] as String)
-          ..completedAt = td['completedAt'] != null
-              ? DateTime.parse(td['completedAt'] as String)
-              : null
-          ..sortOrder = td['sortOrder'] as int? ?? 0;
-        await db.tasks.put(t);
-        t.milestone.value = await db.milestones.get(msId);
-        await t.milestone.save();
-        imported++;
-      }
-
-      // Schedule items
-      final existingSUids = (await db.scheduleItems.where().build().findAll())
-          .map((s) => s.uid)
+      final existingTaskUids = (await db.tasks.where().build().findAll())
+          .map((task) => task.uid)
           .toSet();
+      for (final raw in tasksData) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final uid = (item['uid'] as String?) ?? '';
+        if (uid.isEmpty || existingTaskUids.contains(uid)) continue;
 
-      final schedData = (data['scheduleItems'] as List<dynamic>? ?? []);
-      final newSched = <ScheduleItem>[];
-      for (final sd in schedData) {
-        final uid = sd['uid'] as String;
-        if (existingSUids.contains(uid)) continue;
-        final s = ScheduleItem()
+        final milestoneUid = (item['milestoneUid'] as String?) ?? '';
+        final milestoneId = milestoneUidToId[milestoneUid];
+        if (milestoneId == null) continue;
+
+        final task = Task()
           ..uid = uid
-          ..time = sd['time'] as String
-          ..label = sd['label'] as String
-          ..detail = sd['detail'] as String? ?? ''
-          ..goalUid = sd['goalUid'] as String? ?? ''
-          ..weekdays = (sd['weekdays'] as List<dynamic>).cast<int>()
-          ..isActive = sd['isActive'] as bool? ?? true
-          ..sortOrder = sd['sortOrder'] as int? ?? 0;
-        newSched.add(s);
-        imported++;
+          ..text = (item['text'] as String?) ?? ''
+          ..isCompleted = (item['isCompleted'] as bool?) ?? false
+          ..dueDate = DateTime.tryParse((item['dueDate'] as String?) ?? '')
+          ..priority = (item['priority'] as int?) ?? 0
+          ..note = item['note'] as String?
+          ..createdAt =
+              DateTime.tryParse((item['createdAt'] as String?) ?? '') ??
+                  DateTime.now()
+          ..completedAt =
+              DateTime.tryParse((item['completedAt'] as String?) ?? '')
+          ..sortOrder = (item['sortOrder'] as int?) ?? 0;
+        await db.tasks.put(task);
+        task.milestone.value = await db.milestones.get(milestoneId);
+        await task.milestone.save();
+        tasksImported++;
       }
-      await db.scheduleItems.putAll(newSched);
+
+      final existingScheduleUids =
+          (await db.scheduleItems.where().build().findAll())
+              .map((item) => item.uid)
+              .toSet();
+      final newScheduleItems = <ScheduleItem>[];
+      for (final raw in scheduleData) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final uid = (item['uid'] as String?) ?? '';
+        if (uid.isEmpty || existingScheduleUids.contains(uid)) continue;
+
+        final scheduleItem = ScheduleItem()
+          ..uid = uid
+          ..time = (item['time'] as String?) ?? ''
+          ..label = (item['label'] as String?) ?? ''
+          ..detail = (item['detail'] as String?) ?? ''
+          ..goalUid = (item['goalUid'] as String?) ?? ''
+          ..weekdays = (item['weekdays'] as List<dynamic>? ?? const <dynamic>[])
+              .map((day) => day as int)
+              .toList()
+          ..isActive = (item['isActive'] as bool?) ?? true
+          ..sortOrder = (item['sortOrder'] as int?) ?? 0;
+        newScheduleItems.add(scheduleItem);
+      }
+      if (newScheduleItems.isNotEmpty) {
+        await db.scheduleItems.putAll(newScheduleItems);
+        scheduleImported += newScheduleItems.length;
+      }
     });
 
-    return imported;
+    return (
+      counts: ImportCounts(
+        goals: goalsImported,
+        milestones: milestonesImported,
+        tasks: tasksImported,
+        scheduleItems: scheduleImported,
+        preferences: preferences.length,
+      ),
+      preferences: preferences,
+    );
   }
 }

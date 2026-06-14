@@ -1,7 +1,9 @@
-import 'package:isar/isar.dart';
+import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
+import '../../../core/services/backup_service.dart';
+import '../../../core/models/today_task.dart';
 
 class TaskRepository {
   TaskRepository._();
@@ -30,6 +32,57 @@ class TaskRepository {
       _db.tasks.filter().isCompletedEqualTo(true).findAll();
 
   Future<Task?> getById(int id) => _db.tasks.get(id);
+  Stream<List<Task>> watchAllTasks() =>
+      _db.tasks.where().build().watch(fireImmediately: true);
+
+  Future<List<TodayTaskContext>> getNextTasksForGoal(
+    String goalUid, {
+    int limit = 3,
+  }) async {
+    if (goalUid.isEmpty) return [];
+    final goal = await _db.goals.filter().uidEqualTo(goalUid).findFirst();
+    if (goal == null) return [];
+
+    final tasks = await _db.tasks
+        .filter()
+        .isCompletedEqualTo(false)
+        .sortByPriorityDesc()
+        .thenByDueDate()
+        .thenBySortOrder()
+        .findAll();
+    final contexts = await _toContexts(tasks);
+    return contexts.where((ctx) => ctx.goal?.id == goal.id).take(limit).toList();
+  }
+
+  Future<List<Task>> getAll() => _db.tasks.where().build().findAll();
+
+  Future<List<TodayTaskContext>> getActiveTaskContexts() async {
+    final tasks = await _db.tasks
+        .filter()
+        .isCompletedEqualTo(false)
+        .sortByDueDate()
+        .thenBySortOrder()
+        .findAll();
+    return _toContexts(tasks);
+  }
+
+  Future<List<TodayTaskContext>> getFocusTasks(int goalId) async {
+    final tasks = await _db.tasks
+        .filter()
+        .isCompletedEqualTo(false)
+        .sortByPriorityDesc()
+        .thenByDueDate()
+        .findAll();
+    final contexts = await _toContexts(tasks);
+    return contexts.where((ctx) => ctx.goal?.id == goalId).take(5).toList();
+  }
+
+  Future<List<TodayTaskContext>> getTodayTasks() async {
+    final contexts = await getActiveTaskContexts();
+    return contexts
+        .where((ctx) => ctx.isDueToday || ctx.isOverdue || ctx.isDueThisWeek)
+        .toList();
+  }
 
   // ── Writes ────────────────────────────────────────────────
   Future<Task> create({
@@ -58,6 +111,7 @@ class TaskRepository {
       await _db.tasks.put(task);
       await task.milestone.save();
     });
+    await BackupService.instance.scheduleBackup();
     return task;
   }
 
@@ -65,6 +119,7 @@ class TaskRepository {
     await _db.writeTxn(() async {
       await _db.tasks.put(task);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> toggleComplete(int id) async {
@@ -73,10 +128,12 @@ class TaskRepository {
     task.isCompleted = !task.isCompleted;
     task.completedAt = task.isCompleted ? DateTime.now() : null;
     await _db.writeTxn(() async => _db.tasks.put(task));
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> delete(int id) async {
     await _db.writeTxn(() async => _db.tasks.delete(id));
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> reorder(List<Task> tasks) async {
@@ -86,6 +143,7 @@ class TaskRepository {
       }
       await _db.tasks.putAll(tasks);
     });
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<int> _nextSortOrder(int milestoneId) async {
@@ -96,5 +154,26 @@ class TaskRepository {
         .limit(1)
         .findFirst();
     return (last?.sortOrder ?? -1) + 1;
+  }
+
+  Future<List<TodayTaskContext>> _toContexts(List<Task> tasks) async {
+    final contexts = <TodayTaskContext>[];
+    for (final task in tasks) {
+      await task.milestone.load();
+      final milestone = task.milestone.value;
+      Goal? goal;
+      if (milestone != null) {
+        await milestone.goal.load();
+        goal = milestone.goal.value;
+      }
+      contexts.add(
+        TodayTaskContext(
+          task: task,
+          goal: goal,
+          milestone: milestone,
+        ),
+      );
+    }
+    return contexts;
   }
 }
