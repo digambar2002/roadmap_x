@@ -3,8 +3,10 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  file_saver
+  flutter_secure_storage_windows
   flutter_timezone
-  isar_flutter_libs
+  isar_community_flutter_libs
   url_launcher_windows
 )
 

@@ -96,7 +96,7 @@ const GoalSchema = CollectionSchema(
   getId: _goalGetId,
   getLinks: _goalGetLinks,
   attach: _goalAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _goalEstimateSize(
@@ -1648,7 +1648,7 @@ const MilestoneSchema = CollectionSchema(
   getId: _milestoneGetId,
   getLinks: _milestoneGetLinks,
   attach: _milestoneAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _milestoneEstimateSize(
@@ -2899,7 +2899,7 @@ const TaskSchema = CollectionSchema(
   getId: _taskGetId,
   getLinks: _taskGetLinks,
   attach: _taskAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _taskEstimateSize(
@@ -4378,7 +4378,7 @@ const ScheduleItemSchema = CollectionSchema(
   getId: _scheduleItemGetId,
   getLinks: _scheduleItemGetLinks,
   attach: _scheduleItemAttach,
-  version: '3.1.0+1',
+  version: '3.3.2',
 );
 
 int _scheduleItemEstimateSize(
