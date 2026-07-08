@@ -175,11 +175,7 @@ class BackupService {
   }
 
   String _buildFileName() {
-    final ts = DateTime.now()
-        .toIso8601String()
-        .replaceAll(':', '-')
-        .replaceAll('.', '-');
-    return 'roadmapx_backup_$ts.json';
+    return 'roadmapx_backup.json';
   }
 
   Map<String, dynamic> _exportablePreferences(SharedPreferences prefs) {
