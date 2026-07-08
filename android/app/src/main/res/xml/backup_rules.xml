@@ -3,5 +3,4 @@
     <include domain="file" path="."/>
     <include domain="database" path="."/>
     <include domain="sharedpref" path="."/>
-    <exclude domain="cache" path="."/>
 </full-backup-content>
