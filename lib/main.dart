@@ -4,10 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/utils/prefs_utils.dart';
 import 'core/db/isar_service.dart';
-import 'core/models/models.dart';
 import 'core/router/app_router.dart';
 import 'core/services/backup_service.dart';
-import 'core/services/data_export_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/shared_preferences_provider.dart';
 import 'core/theme/app_theme.dart';
@@ -89,10 +87,6 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
 
   Future<void> _bootstrapRuntimeServices() async {
     await BackupService.instance.init();
-    final goalCount = await IsarService.instance.db.goals.count();
-    if (goalCount == 0) {
-      await BackupService.instance.restoreLatest(mode: ImportMode.merge);
-    }
     await _syncNotifications();
   }
 

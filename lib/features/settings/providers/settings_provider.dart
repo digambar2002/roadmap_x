@@ -38,28 +38,36 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   }
 
   Future<void> setUserName(String name) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     await _prefs.setString(_kUserName, name);
-    state = AsyncData(state.value!.copyWith(userName: name));
+    state = AsyncData(current.copyWith(userName: name));
     await BackupService.instance.scheduleBackup();
   }
 
   Future<void> setThemeMode(String mode) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     await _prefs.setString(_kThemeMode, mode);
-    state = AsyncData(state.value!.copyWith(themeMode: mode));
+    state = AsyncData(current.copyWith(themeMode: mode));
     await BackupService.instance.scheduleBackup();
   }
 
   Future<void> setDailyReminderEnabled(bool enabled) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     await _prefs.setBool(_kDailyReminderEnabled, enabled);
-    state = AsyncData(state.value!.copyWith(dailyReminderEnabled: enabled));
+    state = AsyncData(current.copyWith(dailyReminderEnabled: enabled));
     await BackupService.instance.scheduleBackup();
   }
 
   Future<void> setDailyReminderTime(int hour, int minute) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     await _prefs.setInt(_kDailyReminderHour, hour);
     await _prefs.setInt(_kDailyReminderMinute, minute);
     state = AsyncData(
-      state.value!.copyWith(
+      current.copyWith(
         dailyReminderHour: hour,
         dailyReminderMinute: minute,
       ),
@@ -67,13 +75,17 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   }
 
   Future<void> setTaskDueNotificationsEnabled(bool enabled) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     await _prefs.setBool(_kTaskDueNotificationsEnabled, enabled);
     state = AsyncData(
-      state.value!.copyWith(taskDueNotificationsEnabled: enabled),
+      current.copyWith(taskDueNotificationsEnabled: enabled),
     );
   }
 
   Future<void> setNonNegotiable(int index, String label) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
     final keys = [
       _kNonNeg0Label,
       _kNonNeg1Label,
@@ -81,9 +93,9 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
       _kNonNeg3Label
     ];
     await _prefs.setString(keys[index], label);
-    final updated = List<String>.from(state.value!.nonNegotiables);
+    final updated = List<String>.from(current.nonNegotiables);
     updated[index] = label;
-    state = AsyncData(state.value!.copyWith(nonNegotiables: updated));
+    state = AsyncData(current.copyWith(nonNegotiables: updated));
     await BackupService.instance.scheduleBackup();
   }
 }

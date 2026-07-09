@@ -1,5 +1,7 @@
+import 'dart:io';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -68,11 +70,7 @@ class SettingsScreen extends ConsumerWidget {
             const SizedBox(height: 12),
             _NonNegotiablesEditor(
               values: settings.nonNegotiables,
-              onChanged: (list) {
-                for (int i = 0; i < list.length; i++) {
-                  notifier.setNonNegotiable(i, list[i]);
-                }
-              },
+              onItemChanged: (i, v) => notifier.setNonNegotiable(i, v),
             ).animate().fadeIn(delay: 180.ms),
 
             const SizedBox(height: 24),
@@ -111,10 +109,10 @@ class SettingsScreen extends ConsumerWidget {
             const _BackupSection().animate().fadeIn(delay: 220.ms),
             const SizedBox(height: 8),
             _ActionTile(
-              label: 'Import Backup JSON',
-              subtitle: 'Paste JSON from clipboard and import.',
+              label: 'Import Backup File',
+              subtitle: 'Import from your saved roadmapx_backup.json file.',
               icon: Icons.download_outlined,
-              onTap: () => _importFromClipboard(context),
+              onTap: () => _importFromFile(context, ref),
             ).animate().fadeIn(delay: 225.ms),
             const SizedBox(height: 8),
             _DangerTile(
@@ -209,27 +207,47 @@ class SettingsScreen extends ConsumerWidget {
     await notifier.setDailyReminderEnabled(false);
   }
 
-  Future<void> _importFromClipboard(BuildContext context) async {
+  Future<void> _importFromFile(BuildContext context, WidgetRef ref) async {
     try {
-      final data = await Clipboard.getData('text/plain');
-      final text = data?.text?.trim();
-      if (text == null || text.isEmpty) {
+      // Open system file manager for the user to pick a JSON file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        allowMultiple: false,
+      );
+
+      if (result == null || result.files.isEmpty) return; // User cancelled
+
+      final pickedFile = result.files.first;
+      String? content;
+
+      // file_picker gives bytes on all platforms; on mobile path may also be set
+      if (pickedFile.bytes != null) {
+        content = String.fromCharCodes(pickedFile.bytes!);
+      } else if (pickedFile.path != null) {
+        content = await _readFile(pickedFile.path!);
+      }
+
+      if (content == null || content.trim().isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Clipboard is empty.')),
+            const SnackBar(content: Text('Selected file is empty or unreadable.')),
           );
         }
         return;
       }
-      final result = await BackupService.instance.withoutScheduling(
-        () => DataExportService.instance.importFromJson(text),
+
+      final result2 = await BackupService.instance.withoutScheduling(
+        () => DataExportService.instance.importFromJson(content!),
       );
-      await BackupService.instance.restorePreferences(result.preferences);
+      await BackupService.instance.restorePreferences(result2.preferences);
+      // Refresh settings UI with the restored values
+      ref.invalidate(settingsProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Imported ${result.counts.total} records with settings.',
+              'Imported ${result2.counts.total} records with settings.',
             ),
           ),
         );
@@ -241,6 +259,14 @@ class SettingsScreen extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Future<String?> _readFile(String path) async {
+    try {
+      final file = File(path);
+      if (await file.exists()) return file.readAsString();
+    } catch (_) {}
+    return null;
   }
 }
 
@@ -310,24 +336,39 @@ class _NameField extends StatefulWidget {
 
 class _NameFieldState extends State<_NameField> {
   late final TextEditingController _ctrl;
+  late final FocusNode _focus;
 
   @override
   void initState() {
     super.initState();
     _ctrl = TextEditingController(text: widget.initialValue);
+    _focus = FocusNode();
+    _focus.addListener(_onFocusChange);
+  }
+
+  void _onFocusChange() {
+    if (!_focus.hasFocus) {
+      final trimmed = _ctrl.text.trim();
+      if (trimmed != widget.initialValue) {
+        widget.onChanged(trimmed);
+      }
+    }
   }
 
   @override
   void didUpdateWidget(covariant _NameField oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.initialValue != widget.initialValue &&
-        _ctrl.text != widget.initialValue) {
+        _ctrl.text != widget.initialValue &&
+        !_focus.hasFocus) {
       _ctrl.text = widget.initialValue;
     }
   }
 
   @override
   void dispose() {
+    _focus.removeListener(_onFocusChange);
+    _focus.dispose();
     _ctrl.dispose();
     super.dispose();
   }
@@ -336,13 +377,13 @@ class _NameFieldState extends State<_NameField> {
   Widget build(BuildContext context) {
     return TextFormField(
       controller: _ctrl,
+      focusNode: _focus,
       decoration: const InputDecoration(
         labelText: 'Your Name',
         prefixIcon: Icon(Icons.person_outline),
       ),
       textCapitalization: TextCapitalization.words,
-      onFieldSubmitted: widget.onChanged,
-      onEditingComplete: () => widget.onChanged(_ctrl.text.trim()),
+      onFieldSubmitted: (v) => widget.onChanged(v.trim()),
     );
   }
 }
@@ -387,8 +428,9 @@ class _ThemeTile extends StatelessWidget {
 
 class _NonNegotiablesEditor extends StatefulWidget {
   final List<String> values;
-  final ValueChanged<List<String>> onChanged;
-  const _NonNegotiablesEditor({required this.values, required this.onChanged});
+  final void Function(int index, String value) onItemChanged;
+  const _NonNegotiablesEditor(
+      {required this.values, required this.onItemChanged});
 
   @override
   State<_NonNegotiablesEditor> createState() => _NonNegotiablesEditorState();
@@ -396,6 +438,7 @@ class _NonNegotiablesEditor extends StatefulWidget {
 
 class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
   late final List<TextEditingController> _controllers;
+  late final List<FocusNode> _focusNodes;
 
   @override
   void initState() {
@@ -406,22 +449,27 @@ class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
         text: i < widget.values.length ? widget.values[i] : '',
       ),
     );
-    for (final c in _controllers) {
-      c.addListener(_submit);
-    }
+    _focusNodes = List.generate(4, (i) {
+      final node = FocusNode();
+      node.addListener(() {
+        if (!node.hasFocus) {
+          // Save only this field when focus leaves it
+          widget.onItemChanged(i, _controllers[i].text.trim());
+        }
+      });
+      return node;
+    });
   }
 
   @override
   void dispose() {
     for (final c in _controllers) {
-      c.removeListener(_submit);
       c.dispose();
     }
+    for (final f in _focusNodes) {
+      f.dispose();
+    }
     super.dispose();
-  }
-
-  void _submit() {
-    widget.onChanged(_controllers.map((c) => c.text.trim()).toList());
   }
 
   @override
@@ -432,12 +480,14 @@ class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
           padding: const EdgeInsets.only(bottom: 10),
           child: TextFormField(
             controller: _controllers[i],
+            focusNode: _focusNodes[i],
             decoration: InputDecoration(
               labelText: 'Item ${i + 1}',
               hintText: 'e.g. Exercise, Read, Journal...',
               prefixIcon: const Icon(Icons.check_circle_outline, size: 20),
             ),
             textCapitalization: TextCapitalization.sentences,
+            onFieldSubmitted: (v) => widget.onItemChanged(i, v.trim()),
           ),
         );
       }),
@@ -653,6 +703,8 @@ class _BackupSection extends ConsumerWidget {
                             );
                             return;
                           }
+                          // Refresh settings UI with restored values
+                          ref.invalidate(settingsProvider);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(
@@ -755,7 +807,6 @@ class _DangerTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return _SettingsSurface(
       child: ListTile(
         leading: Icon(icon, color: color),

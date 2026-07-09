@@ -81,6 +81,9 @@ class BackupService {
 
   Future<String?> performAutoBackup() => createBackup();
 
+  /// Returns the raw JSON content of the latest backup file, or null if none exists.
+  Future<String?> readLatestBackupContent() => _readLatestBackup();
+
   Future<ImportCounts?> restoreLatest({
     ImportMode mode = ImportMode.merge,
   }) async {
