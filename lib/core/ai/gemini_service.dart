@@ -128,8 +128,23 @@ $userPrompt
       throw GeminiException('AI returned an empty response. Try again.');
     }
 
-    final jsonData = jsonDecode(raw) as Map<String, dynamic>;
-    return AiGoalResponse.fromJson(jsonData);
+    // The model can return a top-level array or omit expected keys even
+    // with a JSON response type; surface that as a typed GeminiException
+    // instead of an uncaught TypeError.
+    try {
+      final jsonData = jsonDecode(raw);
+      if (jsonData is! Map<String, dynamic>) {
+        throw const FormatException('Top-level JSON is not an object');
+      }
+      return AiGoalResponse.fromJson(jsonData);
+    } on GeminiException {
+      rethrow;
+    } catch (e) {
+      throw GeminiException(
+        'AI returned an unexpected format. Try again.',
+        debugDetails: _redact(e.toString()),
+      );
+    }
   }
 
   void _logSdkError(String type, Object error, StackTrace stackTrace) {
@@ -172,11 +187,17 @@ class AiGoalResponse {
   const AiGoalResponse({required this.goal, required this.milestones});
 
   factory AiGoalResponse.fromJson(Map<String, dynamic> json) {
+    final goalJson = json['goal'];
+    final milestonesJson = json['milestones'];
+    if (goalJson is! Map<String, dynamic> || milestonesJson is! List) {
+      throw const FormatException('Response is missing "goal" or "milestones"');
+    }
     return AiGoalResponse(
-      goal: AiGoal.fromJson(json['goal'] as Map<String, dynamic>),
-      milestones: (json['milestones'] as List<dynamic>)
-        .map((m) => AiMilestone.fromJson(m as Map<String, dynamic>))
-        .toList()
+      goal: AiGoal.fromJson(goalJson),
+      milestones: milestonesJson
+          .whereType<Map<String, dynamic>>()
+          .map(AiMilestone.fromJson)
+          .toList()
         ..sort((a, b) => a.order.compareTo(b.order)),
     );
   }
@@ -224,13 +245,15 @@ class AiMilestone {
   });
 
   factory AiMilestone.fromJson(Map<String, dynamic> json) {
+    final tasksJson = json['tasks'];
     return AiMilestone(
       title: (json['title'] ?? '').toString(),
       theme: (json['theme'] ?? '').toString(),
       order: (json['order'] as num?)?.toInt() ?? 0,
-      tasks: (json['tasks'] as List<dynamic>)
-        .map((t) => AiTask.fromJson(t as Map<String, dynamic>))
-        .toList()
+      tasks: (tasksJson is List ? tasksJson : const <dynamic>[])
+          .whereType<Map<String, dynamic>>()
+          .map(AiTask.fromJson)
+          .toList()
         ..sort((a, b) => a.order.compareTo(b.order)),
     );
   }

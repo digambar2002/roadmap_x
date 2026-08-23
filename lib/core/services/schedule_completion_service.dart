@@ -50,8 +50,10 @@ class ScheduleCompletionService {
     final prefs = await SharedPreferences.getInstance();
     final dates = <DateTime>{};
     final now = DateTime.now();
-    final cutoff = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: lastDays));
+    // lastDays days including today; date-component math avoids the DST
+    // drift of Duration subtraction and the previous off-by-one
+    // (which included lastDays + 1 days).
+    final cutoff = DateTime(now.year, now.month, now.day - (lastDays - 1));
 
     for (final key in prefs.getKeys()) {
       if (!key.startsWith(_prefix)) continue;

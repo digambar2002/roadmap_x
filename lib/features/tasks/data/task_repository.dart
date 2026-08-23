@@ -35,6 +35,15 @@ class TaskRepository {
   Stream<List<Task>> watchAllTasks() =>
       _db.tasks.where().build().watch(fireImmediately: true);
 
+  /// Fires whenever any task changes; used to invalidate derived providers.
+  Stream<void> watchTaskActivity() =>
+      _db.tasks.watchLazy(fireImmediately: true);
+
+  /// Fires whenever any goal changes (e.g. archived), which affects which
+  /// task contexts are visible.
+  Stream<void> watchGoalActivity() =>
+      _db.goals.watchLazy(fireImmediately: true);
+
   Future<List<TodayTaskContext>> getNextTasksForGoal(
     String goalUid, {
     int limit = 3,
@@ -46,10 +55,8 @@ class TaskRepository {
     final tasks = await _db.tasks
         .filter()
         .isCompletedEqualTo(false)
-        .sortByPriorityDesc()
-        .thenByDueDate()
-        .thenBySortOrder()
-        .findAll();
+        .findAll()
+      ..sort(_compareUrgency);
     final contexts = await _toContexts(tasks);
     return contexts.where((ctx) => ctx.goal?.id == goal.id).take(limit).toList();
   }
@@ -60,21 +67,44 @@ class TaskRepository {
     final tasks = await _db.tasks
         .filter()
         .isCompletedEqualTo(false)
-        .sortByDueDate()
-        .thenBySortOrder()
-        .findAll();
-    return _toContexts(tasks);
+        .findAll()
+      ..sort(_compareByDueDate);
+    final contexts = await _toContexts(tasks);
+    return contexts.where((ctx) => ctx.goal?.isArchived != true).toList();
   }
 
   Future<List<TodayTaskContext>> getFocusTasks(int goalId) async {
     final tasks = await _db.tasks
         .filter()
         .isCompletedEqualTo(false)
-        .sortByPriorityDesc()
-        .thenByDueDate()
-        .findAll();
+        .findAll()
+      ..sort(_compareUrgency);
     final contexts = await _toContexts(tasks);
     return contexts.where((ctx) => ctx.goal?.id == goalId).take(5).toList();
+  }
+
+  /// Priority desc, then due date with undated tasks LAST (Isar's
+  /// sortByDueDate puts nulls first, ranking undated tasks above urgent
+  /// dated ones), then manual sort order.
+  static int _compareUrgency(Task a, Task b) {
+    final byPriority = b.priority.compareTo(a.priority);
+    if (byPriority != 0) return byPriority;
+    final byDue = _compareDueDatesNullsLast(a.dueDate, b.dueDate);
+    if (byDue != 0) return byDue;
+    return a.sortOrder.compareTo(b.sortOrder);
+  }
+
+  static int _compareByDueDate(Task a, Task b) {
+    final byDue = _compareDueDatesNullsLast(a.dueDate, b.dueDate);
+    if (byDue != 0) return byDue;
+    return a.sortOrder.compareTo(b.sortOrder);
+  }
+
+  static int _compareDueDatesNullsLast(DateTime? a, DateTime? b) {
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    return a.compareTo(b);
   }
 
   Future<List<TodayTaskContext>> getTodayTasks() async {

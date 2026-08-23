@@ -13,7 +13,6 @@ class GoalColorPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     return SizedBox(
       height: 48,
       child: ListView.separated(

@@ -96,20 +96,40 @@ class GoalRepository {
       taskIds.addAll(m.tasks.map((t) => t.id));
     }
 
+    // Unlink schedule items that point at this goal so they don't keep a
+    // dangling uid (losing their color/name/linked tasks silently).
+    final linkedScheduleItems =
+        await _db.scheduleItems.filter().goalUidEqualTo(goal.uid).findAll();
+    for (final item in linkedScheduleItems) {
+      item.goalUid = '';
+    }
+
     await _db.writeTxn(() async {
       await _db.tasks.deleteAll(taskIds);
       await _db.milestones.deleteAll(milestoneIds);
+      await _db.scheduleItems.putAll(linkedScheduleItems);
       await _db.goals.delete(id);
     });
     await BackupService.instance.scheduleBackup();
   }
 
-  Future<void> reorder(List<Goal> goals) async {
+  /// Reorder goals. [orderedVisible] may be a filtered subset (e.g. only
+  /// active goals): the reordered goals are placed back into the position
+  /// slots they occupied, so hidden goals keep their relative order instead
+  /// of getting colliding sortOrders.
+  Future<void> reorder(List<Goal> orderedVisible) async {
+    final all = await getAll();
+    final visibleIds = orderedVisible.map((g) => g.id).toSet();
+    var nextVisible = 0;
+    final merged = <Goal>[
+      for (final g in all)
+        visibleIds.contains(g.id) ? orderedVisible[nextVisible++] : g,
+    ];
     await _db.writeTxn(() async {
-      for (int i = 0; i < goals.length; i++) {
-        goals[i].sortOrder = i;
+      for (int i = 0; i < merged.length; i++) {
+        merged[i].sortOrder = i;
       }
-      await _db.goals.putAll(goals);
+      await _db.goals.putAll(merged);
     });
     await BackupService.instance.scheduleBackup();
   }

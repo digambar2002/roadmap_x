@@ -29,14 +29,16 @@ class TodayTaskContext {
     return due.year == now.year && due.month == now.month && due.day == now.day;
   }
 
+  /// Due within the next 7 days (exclusive of today, which [isDueToday]
+  /// covers). A calendar-week window would hide a task due tomorrow whenever
+  /// tomorrow falls in the next week.
   bool get isDueThisWeek {
     final due = dueDate;
     if (due == null) return false;
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final weekStart = today.subtract(Duration(days: today.weekday - 1));
-    final weekEnd = weekStart.add(const Duration(days: 6));
+    final horizon = DateTime(now.year, now.month, now.day + 7);
     final dueDay = DateTime(due.year, due.month, due.day);
-    return !dueDay.isBefore(weekStart) && !dueDay.isAfter(weekEnd);
+    return dueDay.isAfter(today) && !dueDay.isAfter(horizon);
   }
 }

@@ -9,7 +9,10 @@ import 'core/services/backup_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/shared_preferences_provider.dart';
 import 'core/theme/app_theme.dart';
+import 'features/analytics/providers/activity_provider.dart';
 import 'features/schedule/data/schedule_repository.dart';
+import 'features/schedule/providers/schedule_provider.dart';
+import 'features/settings/providers/habit_checkin_provider.dart';
 import 'features/tasks/data/task_repository.dart';
 import 'features/settings/providers/settings_provider.dart';
 import 'shared/widgets/restore_backup_gate.dart';
@@ -75,14 +78,34 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
     super.dispose();
   }
 
+  DateTime _lastActiveDay = DateTime.now();
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
+      _rolloverDayIfNeeded();
       Future<void>.microtask(() async {
         await _syncNotifications();
         await BackupService.instance.scheduleBackup();
       });
     }
+  }
+
+  /// Providers that capture "today" at build time go stale when the app
+  /// sits in the background past midnight; reset them on the first resume
+  /// of a new day.
+  void _rolloverDayIfNeeded() {
+    final now = DateTime.now();
+    final sameDay = now.year == _lastActiveDay.year &&
+        now.month == _lastActiveDay.month &&
+        now.day == _lastActiveDay.day;
+    _lastActiveDay = now;
+    if (sameDay) return;
+
+    ref.invalidate(selectedScheduleDateProvider);
+    ref.invalidate(todayHabitChecksProvider);
+    ref.read(habitActivityTickProvider.notifier).state++;
+    ref.read(activityTickProvider.notifier).state++;
   }
 
   Future<void> _bootstrapRuntimeServices() async {

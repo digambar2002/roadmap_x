@@ -39,14 +39,38 @@ final tasksForMilestoneProvider =
   return ref.watch(taskRepositoryProvider).watchForMilestone(milestoneId);
 });
 
-final activeTaskContextsProvider = FutureProvider<List<TodayTaskContext>>((ref) {
+/// Emit a strictly increasing counter on every task / goal change so the
+/// derived FutureProviders below recompute. (Awaiting `watchAllTasks().first`
+/// only consumed the initial emission and never re-fired, leaving the Today
+/// and Dashboard screens stale after edits made elsewhere in the app.)
+final taskChangesProvider = StreamProvider<int>((ref) async* {
+  var tick = 0;
+  await for (final _ in ref.watch(taskRepositoryProvider).watchTaskActivity()) {
+    yield tick++;
+  }
+});
+
+/// Goal changes (archiving, deleting) affect which task contexts are shown.
+final goalChangesProvider = StreamProvider<int>((ref) async* {
+  var tick = 0;
+  await for (final _ in ref.watch(taskRepositoryProvider).watchGoalActivity()) {
+    yield tick++;
+  }
+});
+
+void _watchTaskActivity(Ref ref) {
   ref.watch(activityTickProvider);
+  ref.watch(taskChangesProvider);
+  ref.watch(goalChangesProvider);
+}
+
+final activeTaskContextsProvider = FutureProvider<List<TodayTaskContext>>((ref) {
+  _watchTaskActivity(ref);
   return ref.watch(taskRepositoryProvider).getActiveTaskContexts();
 });
 
 final todayTasksGroupedProvider = FutureProvider<TodayTasksData>((ref) async {
-  ref.watch(activityTickProvider);
-  await ref.watch(taskRepositoryProvider).watchAllTasks().first;
+  _watchTaskActivity(ref);
   final contexts =
       await ref.read(taskRepositoryProvider).getActiveTaskContexts();
 
@@ -87,6 +111,6 @@ final todayTasksProvider = FutureProvider<List<TodayTaskContext>>((ref) async {
 
 final focusTasksProvider =
     FutureProvider.family<List<TodayTaskContext>, int>((ref, goalId) {
-  ref.watch(activityTickProvider);
+  _watchTaskActivity(ref);
   return ref.watch(taskRepositoryProvider).getFocusTasks(goalId);
 });

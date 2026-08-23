@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -14,8 +15,10 @@ import '../../../core/services/notification_service.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../ai_coach/providers/ai_coach_provider.dart';
+import '../../analytics/providers/activity_provider.dart';
 import '../providers/backup_provider.dart';
 import '../providers/ai_settings_provider.dart';
+import '../providers/habit_checkin_provider.dart';
 import '../providers/settings_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -148,7 +151,7 @@ class SettingsScreen extends ConsumerWidget {
           'This will permanently delete all your goals, milestones, tasks and schedule items. This cannot be undone.',
       confirmLabel: 'Delete All',
     );
-    if (!ok1) return;
+    if (!ok1 || !context.mounted) return;
 
     final ok2 = await ConfirmationDialog.show(
       context,
@@ -165,6 +168,11 @@ class SettingsScreen extends ConsumerWidget {
       await db.tasks.clear();
       await db.scheduleItems.clear();
     });
+
+    // Drop notifications scheduled for the records that no longer exist.
+    await NotificationService.instance.syncScheduleNotifications(const []);
+    await NotificationService.instance
+        .syncTaskDueNotifications(const [], enabled: false);
 
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -223,7 +231,9 @@ class SettingsScreen extends ConsumerWidget {
 
       // file_picker gives bytes on all platforms; on mobile path may also be set
       if (pickedFile.bytes != null) {
-        content = String.fromCharCodes(pickedFile.bytes!);
+        // Backups are written as UTF-8; decoding byte-by-byte would turn
+        // every emoji and non-ASCII character into mojibake.
+        content = utf8.decode(pickedFile.bytes!);
       } else if (pickedFile.path != null) {
         content = await _readFile(pickedFile.path!);
       }
@@ -241,8 +251,8 @@ class SettingsScreen extends ConsumerWidget {
         () => DataExportService.instance.importFromJson(content!),
       );
       await BackupService.instance.restorePreferences(result2.preferences);
-      // Refresh settings UI with the restored values
-      ref.invalidate(settingsProvider);
+      // Refresh everything that caches preference-backed state.
+      _invalidateRestoredProviders(ref);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -268,6 +278,16 @@ class SettingsScreen extends ConsumerWidget {
     } catch (_) {}
     return null;
   }
+}
+
+/// Invalidate every provider that caches preference-backed state so a
+/// restore/import is visible immediately instead of after an app restart.
+void _invalidateRestoredProviders(WidgetRef ref) {
+  ref.invalidate(settingsProvider);
+  ref.invalidate(aiSettingsNotifierProvider);
+  ref.invalidate(todayHabitChecksProvider);
+  ref.read(habitActivityTickProvider.notifier).state++;
+  bumpActivityTick(ref);
 }
 
 // ── Section header ────────────────────────────────────────
@@ -453,12 +473,29 @@ class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
       final node = FocusNode();
       node.addListener(() {
         if (!node.hasFocus) {
-          // Save only this field when focus leaves it
-          widget.onItemChanged(i, _controllers[i].text.trim());
+          // Save only this field when focus leaves it, and only if the
+          // user actually changed it — an unconditional save would clobber
+          // values restored from a backup while this screen was open.
+          final trimmed = _controllers[i].text.trim();
+          final current = i < widget.values.length ? widget.values[i] : '';
+          if (trimmed != current) {
+            widget.onItemChanged(i, trimmed);
+          }
         }
       });
       return node;
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _NonNegotiablesEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    for (var i = 0; i < _controllers.length; i++) {
+      final value = i < widget.values.length ? widget.values[i] : '';
+      if (_controllers[i].text != value && !_focusNodes[i].hasFocus) {
+        _controllers[i].text = value;
+      }
+    }
   }
 
   @override
@@ -704,7 +741,7 @@ class _BackupSection extends ConsumerWidget {
                             return;
                           }
                           // Refresh settings UI with restored values
-                          ref.invalidate(settingsProvider);
+                          _invalidateRestoredProviders(ref);
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text(

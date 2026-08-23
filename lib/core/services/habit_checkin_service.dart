@@ -44,11 +44,19 @@ class HabitCheckinService {
   Future<int> getCurrentStreak() async {
     final now = DateTime.now();
     var streak = 0;
+    // An incomplete "today" doesn't break the streak — the day isn't over
+    // yet. Otherwise a long streak would read 0 every morning until all of
+    // today's checks were done.
     for (var i = 0; i < 3650; i++) {
       final day = DateTime(now.year, now.month, now.day - i);
       final complete = await isDayComplete(day);
-      if (!complete) break;
-      streak++;
+      if (complete) {
+        streak++;
+      } else if (i == 0) {
+        continue;
+      } else {
+        break;
+      }
     }
     return streak;
   }

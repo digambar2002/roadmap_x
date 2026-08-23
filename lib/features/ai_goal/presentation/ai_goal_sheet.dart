@@ -104,7 +104,10 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
     final cs = Theme.of(context).colorScheme;
     final state = ref.watch(aiGoalGeneratorProvider);
     final notifier = ref.read(aiGoalGeneratorProvider.notifier);
-    final hasKey = ref.watch(aiSettingsRepositoryProvider).hasApiKey;
+    // Watch the notifier state (not the repository provider, which never
+    // notifies) so the sheet rebuilds when the key is saved or cleared.
+    final aiSettings = ref.watch(aiSettingsNotifierProvider);
+    final hasKey = aiSettings.apiKey?.isNotEmpty ?? false;
 
     return SafeArea(
       child: Padding(
@@ -168,6 +171,10 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                                 final navigator = Navigator.of(context);
                                 final messenger = ScaffoldMessenger.of(context);
                                 final goalId = await notifier.saveToDatabase();
+                                // The sheet can be dismissed while the save
+                                // runs; ref is unusable then and popping
+                                // would remove whatever route is now on top.
+                                if (!mounted) return;
 
                                 if (goalId == null) {
                                   final err = ref.read(aiGoalGeneratorProvider).errorMessage ??

@@ -137,11 +137,17 @@ class _OptionalDateField extends StatelessWidget {
 
     return GestureDetector(
       onTap: () async {
+        final now = DateTime.now();
+        final initial = date ?? now.add(const Duration(days: 30));
+        var firstDate = now.subtract(const Duration(days: 365));
+        // A stored date more than a year old must stay selectable, or the
+        // picker asserts (initialDate before firstDate).
+        if (initial.isBefore(firstDate)) firstDate = initial;
         final picked = await showDatePicker(
           context: context,
-          initialDate: date ?? DateTime.now().add(const Duration(days: 30)),
-          firstDate: DateTime.now().subtract(const Duration(days: 365)),
-          lastDate: DateTime.now().add(const Duration(days: 3650)),
+          initialDate: initial,
+          firstDate: firstDate,
+          lastDate: now.add(const Duration(days: 3650)),
         );
         if (picked != null) onPicked(picked);
       },

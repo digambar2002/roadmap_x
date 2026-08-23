@@ -31,7 +31,13 @@ class ScheduleScreen extends ConsumerWidget {
     final now = DateTime.now();
     final todayDate = DateTime(now.year, now.month, now.day);
     final today = todayDate.weekday % 7;
-    final weekStart = todayDate.subtract(Duration(days: todayDate.weekday % 7));
+    // Date-component arithmetic, not Duration subtraction: subtracting
+    // absolute 24h days across a DST change lands on the wrong calendar day.
+    final weekStart = DateTime(
+      todayDate.year,
+      todayDate.month,
+      todayDate.day - (todayDate.weekday % 7),
+    );
 
     return Scaffold(
       backgroundColor: cs.background,
@@ -158,7 +164,9 @@ class _DaySelectorTabs extends StatelessWidget {
                     ),
                   ),
                   child: Text(
-                    '${dayNames[i]}\n${weekStart.day + i}',
+                    // Normalize through DateTime so day numbers roll over
+                    // month boundaries (30, 31, 1, 2...) instead of 32, 33...
+                    '${dayNames[i]}\n${DateTime(weekStart.year, weekStart.month, weekStart.day + i).day}',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 11,
@@ -191,11 +199,13 @@ class _ScheduleList extends StatelessWidget {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: sorted.length,
-      itemBuilder: (context, i) =>
-          _ScheduleItemCard(item: sorted[i], selectedDate: selectedDate)
-          .animate()
-          .fadeIn(delay: (i * 40).ms)
-          .slideY(begin: 0.05),
+      itemBuilder: (context, i) => _ScheduleItemCard(
+            // Key the card by item uid so a State isn't reused for a
+            // different item when deletions shift list positions.
+            key: ValueKey(sorted[i].uid),
+            item: sorted[i],
+            selectedDate: selectedDate,
+          ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
     );
   }
 
@@ -219,6 +229,7 @@ class _ScheduleItemCard extends ConsumerStatefulWidget {
   final ScheduleItem item;
   final DateTime selectedDate;
   const _ScheduleItemCard({
+    super.key,
     required this.item,
     required this.selectedDate,
   });
@@ -235,6 +246,17 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
   void initState() {
     super.initState();
     _loadLinkedTasks();
+  }
+
+  @override
+  void didUpdateWidget(covariant _ScheduleItemCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh when the item is relinked to another goal (or edited).
+    if (oldWidget.item.goalUid != widget.item.goalUid ||
+        oldWidget.item.uid != widget.item.uid) {
+      _linkedTasks = [];
+      _loadLinkedTasks();
+    }
   }
 
   Future<void> _loadLinkedTasks() async {
@@ -326,6 +348,9 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
                                     widget.item.uid,
                                     v ?? false,
                                   );
+                                  // ref is unusable if the card was torn
+                                  // down while the write was in flight.
+                                  if (!mounted) return;
                                   ref.invalidate(scheduleCompletedUidsProvider(
                                       widget.selectedDate));
                                 },

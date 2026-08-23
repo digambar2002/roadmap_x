@@ -185,11 +185,15 @@ class _DatePickerField extends StatelessWidget {
     final tt = Theme.of(context).textTheme;
     return GestureDetector(
       onTap: () async {
+        // firstDate must not be after initialDate: an overdue goal's stored
+        // target date would otherwise trip showDatePicker's assertion.
+        final now = DateTime.now();
+        final firstDate = date.isBefore(now) ? date : now;
         final picked = await showDatePicker(
           context: context,
           initialDate: date,
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 3650)),
+          firstDate: firstDate,
+          lastDate: now.add(const Duration(days: 3650)),
         );
         if (picked != null) onPicked(picked);
       },

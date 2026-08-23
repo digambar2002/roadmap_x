@@ -45,6 +45,7 @@ class NotificationService {
   bool _initialized = false;
   static const _schedulePayloadPrefix = 'schedule:';
   static const _taskDuePayloadPrefix = 'task_due:';
+  static const _dailyReminderId = 1;
 
   Future<void> init() async {
     if (_initialized) return;
@@ -116,7 +117,9 @@ class NotificationService {
     }
   }
 
-  /// Schedule daily reminder using workmanager (more reliable)
+  /// Schedule the daily reminder as a repeating zoned notification.
+  /// (WorkManager periodic tasks reschedule relative to the previous run,
+  /// so Doze delays accumulate and the reminder drifts later every day.)
   Future<void> scheduleDailyReminder({
     required int hour,
     required int minute,
@@ -128,21 +131,58 @@ class NotificationService {
     final granted = await requestPermission();
     if (!granted) return;
 
-    // Cancel any existing daily reminders
+    // Cancel the legacy workmanager-based reminder and any pending one.
     await Workmanager().cancelByTag('daily_reminder');
+    await _plugin.cancel(_dailyReminderId);
 
-    // Schedule with workmanager for reliable delivery
-    final timeOfDay = '$hour:${minute.toString().padLeft(2, '0')}';
-    await Workmanager().registerPeriodicTask(
-      'daily_reminder_${DateTime.now().millisecondsSinceEpoch}',
-      'daily_reminder',
-      tag: 'daily_reminder',
-      frequency: const Duration(hours: 24),
-      initialDelay: _calculateInitialDelay(hour, minute),
-      existingWorkPolicy: ExistingPeriodicWorkPolicy.update,
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'daily_reminder',
+        'Daily Reminder',
+        channelDescription: 'Daily goal progress reminder',
+        importance: Importance.max,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(),
     );
 
-    print('Daily reminder scheduled for $timeOfDay via workmanager');
+    final next = _nextDailyTime(hour, minute);
+    try {
+      await _plugin.zonedSchedule(
+        _dailyReminderId,
+        'RoadmapX Reminder',
+        'Time to check on your goals! Keep the streak alive 🔥',
+        next,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (_) {
+      await _plugin.zonedSchedule(
+        _dailyReminderId,
+        'RoadmapX Reminder',
+        'Time to check on your goals! Keep the streak alive 🔥',
+        next,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    }
+  }
+
+  tz.TZDateTime _nextDailyTime(int hour, int minute) {
+    final now = tz.TZDateTime.now(tz.local);
+    var scheduled =
+        tz.TZDateTime(tz.local, now.year, now.month, now.day, hour, minute);
+    if (!scheduled.isAfter(now)) {
+      scheduled = tz.TZDateTime(
+          tz.local, now.year, now.month, now.day + 1, hour, minute);
+    }
+    return scheduled;
   }
 
   /// Show the daily reminder notification (called by workmanager or manually)
@@ -196,8 +236,10 @@ class NotificationService {
           from: tz.TZDateTime.now(tz.local),
         );
 
-        final eventId = 2000000 + (item.id * 10) + weekday;
-        final priorId = 3000000 + (item.id * 10) + weekday;
+        // Bases spaced far enough apart that id ranges can't collide
+        // (cancellation is payload-based, so re-basing is safe).
+        final eventId = 100000000 + (item.id * 10) + weekday;
+        final priorId = 200000000 + (item.id * 10) + weekday;
         await _scheduleViaZonedSchedule(eventId, priorId, item, next);
       }
     }
@@ -221,7 +263,7 @@ class NotificationService {
       if (!due.isAfter(DateTime.now())) continue;
 
       final dueTz = tz.TZDateTime.from(due, tz.local);
-      final id = 4000000 + task.id;
+      final id = 300000000 + task.id;
 
       try {
         await _plugin.zonedSchedule(
@@ -431,7 +473,11 @@ class NotificationService {
       final trimmed = time.trim();
       if (trimmed.isEmpty) return null;
 
+      // Dots between digits are time separators ("6.30 PM"); other dots
+      // are abbreviation periods ("P.M.") and can be dropped.
       final normalized = trimmed
+          .replaceAllMapped(
+              RegExp(r'(\d)\.(\d)'), (m) => '${m.group(1)}:${m.group(2)}')
           .replaceAll('.', '')
           .replaceAll(RegExp(r'\s+'), ' ')
           .toUpperCase();
@@ -478,29 +524,30 @@ class NotificationService {
     final nowWeekdaySun0 = from.weekday % 7;
     final diffDays = (weekdaySun0 - nowWeekdaySun0 + 7) % 7;
 
+    // Add days as date components, not absolute time: `.add(Duration(...))`
+    // across a DST change shifts the wall-clock hour, and the weekly repeat
+    // then fires at the wrong hour until the next re-sync.
     var candidate = tz.TZDateTime(
       tz.local,
       from.year,
       from.month,
-      from.day,
+      from.day + diffDays,
       hour,
       minute,
-    ).add(Duration(days: diffDays));
+    );
 
     if (!candidate.isAfter(from)) {
-      candidate = candidate.add(const Duration(days: 7));
+      candidate = tz.TZDateTime(
+        tz.local,
+        candidate.year,
+        candidate.month,
+        candidate.day + 7,
+        hour,
+        minute,
+      );
     }
 
     return candidate;
-  }
-
-  Duration _calculateInitialDelay(int hour, int minute) {
-    final now = DateTime.now();
-    var scheduled = DateTime(now.year, now.month, now.day, hour, minute);
-    if (scheduled.isBefore(now)) {
-      scheduled = scheduled.add(const Duration(days: 1));
-    }
-    return scheduled.difference(now);
   }
 
   /// Immediate notification for testing

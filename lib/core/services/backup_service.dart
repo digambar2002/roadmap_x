@@ -42,6 +42,7 @@ class BackupService {
   Future<T> withoutScheduling<T>(Future<T> Function() action) async {
     final previous = _suspendScheduling;
     _suspendScheduling = true;
+    _debounceTimer?.cancel();
     try {
       return await action();
     } finally {
@@ -53,6 +54,7 @@ class BackupService {
     if (_suspendScheduling) return;
     _debounceTimer?.cancel();
     _debounceTimer = Timer(const Duration(seconds: 3), () async {
+      if (_suspendScheduling) return;
       await createBackup();
     });
   }
@@ -96,7 +98,7 @@ class BackupService {
       );
 
       final prefs = await SharedPreferences.getInstance();
-      await _restorePreferences(prefs, imported.preferences);
+      await _restorePreferences(prefs, imported.preferences, mode: mode);
       await _secureStorage.write(
         key: _restoreMarkerKey,
         value: DateTime.now().toIso8601String(),
@@ -115,9 +117,12 @@ class BackupService {
   Future<void> clearRestoreMarker() =>
       _secureStorage.delete(key: _restoreMarkerKey);
 
-  Future<void> restorePreferences(Map<String, dynamic> preferences) async {
+  Future<void> restorePreferences(
+    Map<String, dynamic> preferences, {
+    ImportMode mode = ImportMode.merge,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
-    await _restorePreferences(prefs, preferences);
+    await _restorePreferences(prefs, preferences, mode: mode);
   }
 
   Future<String?> latestBackupPath() =>
@@ -135,12 +140,15 @@ class BackupService {
       }
     }
 
-    final dir = await _defaultBackupDirectory();
+    final dir = await _backupSearchDirectory();
     if (dir == null || !await dir.exists()) return null;
     final entries = dir
         .listSync()
         .whereType<File>()
-        .where((file) => file.path.endsWith('.json'))
+        .where((file) {
+          final name = file.uri.pathSegments.last.toLowerCase();
+          return name.contains('roadmapx') && name.endsWith('.json');
+        })
         .toList()
       ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
     if (entries.isEmpty) return null;
@@ -154,9 +162,14 @@ class BackupService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       final downloads = Directory('/storage/emulated/0/Download');
       if (await downloads.exists()) {
-        final file = File('${downloads.path}/$filename');
-        await file.writeAsString(contents);
-        return file.path;
+        try {
+          final file = File('${downloads.path}/$filename');
+          await file.writeAsString(contents);
+          return file.path;
+        } catch (_) {
+          // Scoped storage can forbid overwriting a file owned by a previous
+          // install; fall through to the app-specific directory.
+        }
       }
     }
 
@@ -171,6 +184,16 @@ class BackupService {
     return file.path;
   }
 
+  /// Directory scanned when no stored backup path exists. Must mirror the
+  /// locations [_writeBackupFile] writes to.
+  Future<Directory?> _backupSearchDirectory() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final downloads = Directory('/storage/emulated/0/Download');
+      if (await downloads.exists()) return downloads;
+    }
+    return _defaultBackupDirectory();
+  }
+
   Future<Directory?> _defaultBackupDirectory() async {
     final downloads = await getDownloadsDirectory();
     if (downloads != null) return downloads;
@@ -181,9 +204,13 @@ class BackupService {
     return 'roadmapx_backup.json';
   }
 
+  /// Secrets that must never leave the device in a plaintext backup file.
+  static const _sensitivePreferenceKeys = {'gemini_api_key'};
+
   Map<String, dynamic> _exportablePreferences(SharedPreferences prefs) {
     final data = <String, dynamic>{};
     for (final key in prefs.getKeys()) {
+      if (_sensitivePreferenceKeys.contains(key)) continue;
       data[key] = prefs.get(key);
     }
     return data;
@@ -191,8 +218,19 @@ class BackupService {
 
   Future<void> _restorePreferences(
     SharedPreferences prefs,
-    Map<String, dynamic> restored,
-  ) async {
+    Map<String, dynamic> restored, {
+    ImportMode mode = ImportMode.merge,
+  }) async {
+    if (mode == ImportMode.replace) {
+      // Per-day history keys not present in the backup would otherwise
+      // survive a "replace" restore and pollute streaks/heatmaps.
+      final staleKeys = prefs.getKeys().where((key) =>
+          key.startsWith('habit_checks_') ||
+          key.startsWith('schedule_completion_'));
+      for (final key in staleKeys.toList()) {
+        await prefs.remove(key);
+      }
+    }
     for (final entry in restored.entries) {
       final key = entry.key;
       final value = entry.value;

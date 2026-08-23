@@ -38,6 +38,8 @@ class GoalDetailScreen extends ConsumerStatefulWidget {
 class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
   late ConfettiController _confetti;
 
+  bool _poppedOnMissingGoal = false;
+
   @override
   void initState() {
     super.initState();
@@ -66,9 +68,14 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
       ),
       data: (goal) {
         if (goal == null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) context.pop();
-          });
+          // Guard so repeated rebuilds during the exit transition can't
+          // schedule a second pop (which would pop the goals list too).
+          if (!_poppedOnMissingGoal) {
+            _poppedOnMissingGoal = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) context.pop();
+            });
+          }
           return const Scaffold(body: SizedBox.shrink());
         }
         return _GoalDetailBody(
@@ -256,7 +263,9 @@ class _GoalDetailBody extends ConsumerWidget {
       );
       if (ok && context.mounted) {
         await GoalRepository.instance.delete(goal.id);
-        context.pop();
+        // No explicit pop here: the goal stream emits null after the
+        // delete and the screen pops itself exactly once. Popping here as
+        // well used to throw the user back two screens.
       }
     }
   }

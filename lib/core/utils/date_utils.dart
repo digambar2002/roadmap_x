@@ -20,9 +20,11 @@ class AppDateUtils {
       DateFormat('MMMM yyyy').format(date);
 
   static int daysUntil(DateTime target) {
+    // Anchor in UTC so the difference is an exact multiple of 24h; local
+    // midnights across a DST change are 23/25h apart and inDays truncates.
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final targetDay = DateTime(target.year, target.month, target.day);
+    final today = DateTime.utc(now.year, now.month, now.day);
+    final targetDay = DateTime.utc(target.year, target.month, target.day);
     return targetDay.difference(today).inDays;
   }
 
@@ -33,6 +35,14 @@ class AppDateUtils {
     if (days == 1) return '1 day left';
     return '$days days left';
   }
+
+  /// Exact calendar-day difference (a - b), immune to DST: local midnights
+  /// can be 23/25h apart, which a plain `difference().inDays` truncates.
+  static int dayDifference(DateTime a, DateTime b) => DateTime.utc(
+        a.year,
+        a.month,
+        a.day,
+      ).difference(DateTime.utc(b.year, b.month, b.day)).inDays;
 
   static bool isSameDay(DateTime a, DateTime b) =>
       a.year == b.year && a.month == b.month && a.day == b.day;
@@ -46,7 +56,6 @@ class AppDateUtils {
       date.weekday % 7; // 0=Sunday, 1=Monday, ..., 6=Saturday
 
   static List<DateTime> daysInMonth(int year, int month) {
-    final first = DateTime(year, month, 1);
     final last = DateTime(year, month + 1, 0);
     return List.generate(
       last.day,

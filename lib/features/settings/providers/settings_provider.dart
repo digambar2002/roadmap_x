@@ -72,6 +72,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
         dailyReminderMinute: minute,
       ),
     );
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> setTaskDueNotificationsEnabled(bool enabled) async {
@@ -81,6 +82,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     state = AsyncData(
       current.copyWith(taskDueNotificationsEnabled: enabled),
     );
+    await BackupService.instance.scheduleBackup();
   }
 
   Future<void> setNonNegotiable(int index, String label) async {

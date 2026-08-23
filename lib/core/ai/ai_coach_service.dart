@@ -179,7 +179,13 @@ Rules:
       if (raw == null || raw.trim().isEmpty) {
         throw AiCoachException('AI returned an empty response.');
       }
-      return jsonDecode(raw) as Map<String, dynamic>;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) {
+        // A top-level array would otherwise escape as a TypeError that
+        // callers expecting AiCoachException don't handle.
+        throw AiCoachException('AI returned invalid JSON. Please retry.');
+      }
+      return decoded;
     } on TimeoutException {
       throw AiCoachException('Request timed out. Please retry.');
     } on SocketException {
@@ -264,9 +270,19 @@ class WeeklyCoachReview {
       wins: toStringList(json['wins']),
       blockers: toStringList(json['blockers']),
       nextWeekFocus: toStringList(json['next_week_focus']),
-      consistencyScore: ((json['consistency_score'] as num?)?.toInt() ?? 0).clamp(0, 100),
+      consistencyScore: _parseScore(json['consistency_score']),
       generatedAt: DateTime.now(),
     );
+  }
+
+  /// The model sometimes returns the score as a string ("85").
+  static int _parseScore(Object? value) {
+    final parsed = switch (value) {
+      num n => n.toInt(),
+      String s => int.tryParse(s.trim()) ?? 0,
+      _ => 0,
+    };
+    return parsed.clamp(0, 100);
   }
 
   Map<String, dynamic> toJson() => {

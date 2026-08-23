@@ -48,10 +48,17 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
     if (_lastRequestAt != null) {
       final elapsed = now.difference(_lastRequestAt!);
       if (elapsed < _requestCooldown) {
+        // Keep an existing successful preview visible — flipping to the
+        // error state here used to irrecoverably discard the generated
+        // roadmap when "Try Again" was tapped within the cooldown.
+        if (state.result != null &&
+            state.status == AiGenerationStatus.success) {
+          return;
+        }
         final remaining = (_requestCooldown - elapsed).inSeconds + 1;
         state = (
           status: AiGenerationStatus.error,
-          result: null,
+          result: state.result,
           errorMessage: 'Please wait $remaining seconds before trying again.',
           technicalDetails: null,
           prompt: state.prompt,
@@ -131,6 +138,7 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
     final milestoneRepo = ref.read(milestoneRepositoryProvider);
     final taskRepo = ref.read(taskRepositoryProvider);
 
+    var goalId = 0;
     try {
       final goal = await goalRepo.create(
         name: result.goal.name.isEmpty ? 'Untitled Goal' : result.goal.name,
@@ -139,8 +147,11 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
         colorHex: _parseColorHex(result.goal.colorHex),
         targetDate: _targetDateFromDuration(result.goal.durationLabel),
       );
+      goalId = goal.id;
 
-      for (final milestone in result.milestones..sort((a, b) => a.order.compareTo(b.order))) {
+      final orderedMilestones = [...result.milestones]
+        ..sort((a, b) => a.order.compareTo(b.order));
+      for (final milestone in orderedMilestones) {
         final savedMilestone = await milestoneRepo.create(
           goalId: goal.id,
           title: milestone.title.isEmpty ? 'Milestone' : milestone.title,
@@ -160,6 +171,13 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
       reset();
       return goal.id;
     } catch (e) {
+      // Remove the half-created goal so a retry can't leave a partial
+      // duplicate sitting next to the complete one.
+      if (goalId != 0) {
+        try {
+          await goalRepo.delete(goalId);
+        } catch (_) {}
+      }
       state = (
         status: AiGenerationStatus.error,
         result: state.result,

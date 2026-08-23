@@ -136,6 +136,8 @@ class TodayScreen extends ConsumerWidget {
 
   Future<void> _toggleTask(WidgetRef ref, TodayTaskContext ctx) async {
     await TaskRepository.instance.toggleComplete(ctx.task.id);
+    // ref throws if the widget was disposed while the write was in flight.
+    if (!ref.context.mounted) return;
     bumpActivityTick(ref);
     ref.invalidate(todayTasksGroupedProvider);
   }

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../router/app_shell.dart';
@@ -43,8 +42,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
                 routes: [
                   GoRoute(
                     path: ':goalId',
+                    // tryParse: a malformed deep link ("/goals/abc") must
+                    // not crash the route build. id 0 never matches a
+                    // goal, so the detail screen pops back gracefully.
                     builder: (context, state) => GoalDetailScreen(
-                      goalId: int.parse(state.pathParameters['goalId']!),
+                      goalId:
+                          int.tryParse(state.pathParameters['goalId']!) ?? 0,
                     ),
                   ),
                 ],
@@ -76,7 +79,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/focus/:goalId',
         builder: (context, state) => FocusScreen(
-          goalId: int.parse(state.pathParameters['goalId']!),
+          goalId: int.tryParse(state.pathParameters['goalId']!) ?? 0,
         ),
       ),
     ],

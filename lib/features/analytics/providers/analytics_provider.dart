@@ -108,8 +108,12 @@ final analyticsDataProvider = FutureProvider<AnalyticsData>((ref) async {
     activityCountByDay[day] = (activityCountByDay[day] ?? 0) + count;
   }
 
-  final weekStart = today.subtract(Duration(days: today.weekday - 1));
-  final lastWeekStart = weekStart.subtract(const Duration(days: 7));
+  // Date-component arithmetic keeps week boundaries on local midnight even
+  // across DST changes (Duration subtraction can land at 23:00/01:00).
+  final weekStart =
+      DateTime(today.year, today.month, today.day - (today.weekday - 1));
+  final lastWeekStart =
+      DateTime(weekStart.year, weekStart.month, weekStart.day - 7);
 
   int thisWeek = 0, lastWeek = 0;
   final last7 = List.filled(7, 0);
@@ -122,7 +126,7 @@ final analyticsDataProvider = FutureProvider<AnalyticsData>((ref) async {
     if (!d.isBefore(weekStart)) thisWeek += count;
     if (!d.isBefore(lastWeekStart) && d.isBefore(weekStart)) lastWeek += count;
 
-    final daysAgo = today.difference(d).inDays;
+    final daysAgo = AppDateUtils.dayDifference(today, d);
     if (daysAgo >= 0 && daysAgo < 7) {
       last7[6 - daysAgo] += count;
     }
@@ -150,7 +154,7 @@ final analyticsDataProvider = FutureProvider<AnalyticsData>((ref) async {
   int longest = 0, cur = 0;
   DateTime? prev;
   for (final d in sortedDays) {
-    if (prev != null && d.difference(prev).inDays == 1) {
+    if (prev != null && AppDateUtils.dayDifference(d, prev) == 1) {
       cur++;
     } else {
       cur = 1;

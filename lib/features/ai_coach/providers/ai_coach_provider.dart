@@ -54,7 +54,9 @@ class DailyBriefingNotifier extends AsyncNotifier<DailyBriefing?> {
       return;
     }
     state = const AsyncLoading();
-    state = AsyncData(await _load(forceRefresh: true));
+    // guard() turns failures into AsyncError instead of leaving the UI
+    // stuck in AsyncLoading forever with an unhandled exception.
+    state = await AsyncValue.guard(() => _load(forceRefresh: true));
   }
 
   Future<void> load({bool forceRefresh = false}) async {
@@ -68,7 +70,7 @@ class DailyBriefingNotifier extends AsyncNotifier<DailyBriefing?> {
     }
     if (state.isLoading) return;
     state = const AsyncLoading();
-    state = AsyncData(await _load(forceRefresh: false));
+    state = await AsyncValue.guard(() => _load(forceRefresh: false));
   }
 
   Future<DailyBriefing?> _load({required bool forceRefresh}) async {
