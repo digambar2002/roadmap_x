@@ -22,7 +22,8 @@ class CollapsibleBriefing extends ConsumerStatefulWidget {
 class _CollapsibleBriefingState extends ConsumerState<CollapsibleBriefing> {
   static const _prefsKey = 'dashboard_briefing_expanded';
 
-  late bool _expanded = ref.read(sharedPreferencesProvider).getBool(_prefsKey) ?? false;
+  late bool _expanded =
+      ref.read(sharedPreferencesProvider).getBool(_prefsKey) ?? false;
 
   Future<void> _toggle() async {
     setState(() => _expanded = !_expanded);

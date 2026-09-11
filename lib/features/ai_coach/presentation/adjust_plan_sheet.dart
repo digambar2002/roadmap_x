@@ -88,7 +88,8 @@ class _AdjustPlanSheetState extends ConsumerState<AdjustPlanSheet> {
                         userInstruction: _instructionController.text,
                       ),
               icon: const Icon(Icons.auto_awesome),
-              label: Text(state.isLoading ? 'Generating…' : 'Generate suggestions'),
+              label: Text(
+                  state.isLoading ? 'Generating…' : 'Generate suggestions'),
             ),
           ),
         ),

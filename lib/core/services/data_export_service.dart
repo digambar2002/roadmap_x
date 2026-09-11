@@ -13,6 +13,7 @@ class ImportCounts {
     this.milestones = 0,
     this.tasks = 0,
     this.scheduleItems = 0,
+    this.habits = 0,
     this.habitCheckins = 0,
     this.scheduleCompletions = 0,
     this.appSettings = 0,
@@ -23,6 +24,7 @@ class ImportCounts {
   final int milestones;
   final int tasks;
   final int scheduleItems;
+  final int habits;
   final int habitCheckins;
   final int scheduleCompletions;
   final int appSettings;
@@ -33,6 +35,7 @@ class ImportCounts {
       milestones +
       tasks +
       scheduleItems +
+      habits +
       habitCheckins +
       scheduleCompletions +
       appSettings;
@@ -70,6 +73,7 @@ class DataExportService {
     final milestones = await db.milestones.where().build().findAll();
     final tasks = await db.tasks.where().build().findAll();
     final scheduleItems = await db.scheduleItems.where().build().findAll();
+    final habits = await db.habits.where().build().findAll();
     final habitCheckins = await db.habitCheckins.where().build().findAll();
     final scheduleCompletions =
         await db.scheduleCompletions.where().build().findAll();
@@ -83,6 +87,7 @@ class DataExportService {
       'milestones': milestones.map(milestoneToMap).toList(),
       'tasks': tasks.map(taskToMap).toList(),
       'scheduleItems': scheduleItems.map(scheduleItemToMap).toList(),
+      'habits': habits.map(habitToMap).toList(),
       'habitCheckins': habitCheckins.map(habitCheckinToMap).toList(),
       'scheduleCompletions':
           scheduleCompletions.map(scheduleCompletionToMap).toList(),
@@ -148,10 +153,20 @@ class DataExportService {
         'deletedAt': item.deletedAt?.toIso8601String(),
       };
 
+  static Map<String, dynamic> habitToMap(Habit row) => {
+        'uid': row.uid,
+        'label': row.label,
+        'iconKey': row.iconKey,
+        'sortOrder': row.sortOrder,
+        'createdAt': row.createdAt.toIso8601String(),
+        'updatedAt': row.updatedAt.toIso8601String(),
+        'deletedAt': row.deletedAt?.toIso8601String(),
+      };
+
   static Map<String, dynamic> habitCheckinToMap(HabitCheckin row) => {
         'uid': row.uid,
         'dayKey': row.dayKey,
-        'checkIndex': row.checkIndex,
+        'habitUid': row.habitUid,
         'isChecked': row.isChecked,
         'updatedAt': row.updatedAt.toIso8601String(),
         'deletedAt': row.deletedAt?.toIso8601String(),
@@ -234,6 +249,7 @@ class DataExportService {
     final milestonesData = list('milestones');
     final tasksData = list('tasks');
     final scheduleData = list('scheduleItems');
+    final habitDefinitionData = list('habits');
     final habitData = list('habitCheckins');
     final completionData = list('scheduleCompletions');
     final settingData = list('appSettings');
@@ -247,6 +263,7 @@ class DataExportService {
     var milestonesImported = 0;
     var tasksImported = 0;
     var scheduleImported = 0;
+    var habitDefinitionsImported = 0;
     var habitImported = 0;
     var completionImported = 0;
     var settingsImported = 0;
@@ -257,6 +274,7 @@ class DataExportService {
         await db.milestones.clear();
         await db.goals.clear();
         await db.scheduleItems.clear();
+        await db.habits.clear();
         await db.habitCheckins.clear();
         await db.scheduleCompletions.clear();
         await db.appSettings.clear();
@@ -419,9 +437,61 @@ class DataExportService {
         scheduleImported++;
       }
 
+      // ── Habits ──
+      for (final raw in habitDefinitionData) {
+        final item = Map<String, dynamic>.from(raw as Map);
+        final uid = (item['uid'] as String?) ?? '';
+        if (uid.isEmpty) continue;
+
+        final incomingUpdatedAt = _date(item['updatedAt']);
+        final deletedAt = _date(item['deletedAt']);
+        final existing = await db.habits.filter().uidEqualTo(uid).findFirst();
+
+        if (existing != null &&
+            !_incomingWins(incomingUpdatedAt, existing.updatedAt,
+                incomingIsTombstone: deletedAt != null)) {
+          continue;
+        }
+
+        final row = existing ?? (Habit()..uid = uid);
+        row
+          ..label = (item['label'] as String?) ?? ''
+          ..iconKey = (item['iconKey'] as String?) ?? 'check'
+          ..sortOrder = (item['sortOrder'] as int?) ?? 0
+          ..createdAt = _date(item['createdAt']) ?? DateTime(2000)
+          ..updatedAt = incomingUpdatedAt ?? DateTime.now()
+          ..deletedAt = deletedAt;
+        await db.habits.put(row);
+        habitDefinitionsImported++;
+      }
+
+      // Positional ticks from a v2 blob are resolved against the habit order.
+      final habitsByPosition = await db.habits
+          .filter()
+          .deletedAtIsNull()
+          .sortBySortOrder()
+          .build()
+          .findAll();
+
       // ── Habit check-ins (v3 rows, then anything lifted out of a v2 blob) ──
       for (final raw in [...habitData, ...legacy.habitCheckins]) {
         final item = Map<String, dynamic>.from(raw as Map);
+
+        // A legacy entry carries a slot index instead of a habit uid; map it
+        // through the current habit order, and skip it if no habit occupies
+        // that slot any more rather than attributing the tick to the wrong one.
+        var habitUid = (item['habitUid'] as String?) ?? '';
+        final legacyIndex = item['checkIndex'] as int?;
+        if (habitUid.isEmpty && legacyIndex != null) {
+          if (legacyIndex < 0 || legacyIndex >= habitsByPosition.length) {
+            continue;
+          }
+          habitUid = habitsByPosition[legacyIndex].uid;
+          item['uid'] =
+              HabitCheckin.uidFor((item['dayKey'] as String?) ?? '', habitUid);
+        }
+        if (habitUid.isEmpty) continue;
+
         final uid = (item['uid'] as String?) ?? '';
         if (uid.isEmpty) continue;
 
@@ -439,7 +509,7 @@ class DataExportService {
         final row = existing ?? (HabitCheckin()..uid = uid);
         row
           ..dayKey = (item['dayKey'] as String?) ?? ''
-          ..checkIndex = (item['checkIndex'] as int?) ?? 0
+          ..habitUid = habitUid
           ..isChecked = (item['isChecked'] as bool?) ?? false
           ..updatedAt = incomingUpdatedAt ?? DateTime.now()
           ..deletedAt = deletedAt;
@@ -508,6 +578,7 @@ class DataExportService {
         milestones: milestonesImported,
         tasks: tasksImported,
         scheduleItems: scheduleImported,
+        habits: habitDefinitionsImported,
         habitCheckins: habitImported,
         scheduleCompletions: completionImported,
         appSettings: settingsImported,
@@ -539,7 +610,6 @@ class DataExportService {
         for (final tick in _decodeList(entry.value).asMap().entries) {
           if (!_parseBool(tick.value)) continue;
           habitCheckins.add({
-            'uid': HabitCheckin.uidFor(dayKey, tick.key),
             'dayKey': dayKey,
             'checkIndex': tick.key,
             'isChecked': true,

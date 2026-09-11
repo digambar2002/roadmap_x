@@ -4,52 +4,61 @@ import '../db/isar_service.dart';
 import '../models/models.dart';
 import 'local_changes.dart';
 
-/// Daily non-negotiables, stored one row per (day, checkbox).
+/// Daily non-negotiables, stored one row per (day, habit).
 ///
-/// This used to be a JSON array in SharedPreferences keyed by day. That shape
-/// cannot survive multi-device sync: two devices ticking different boxes on
-/// the same day both rewrite the whole day's array, and whichever lands second
-/// erases the other's tick. Per-checkbox rows make those writes independent.
+/// Habits used to be four fixed slots; they are now [Habit] rows the user
+/// controls, so check-ins are keyed by habit uid rather than by position. A
+/// positional key would silently re-point every past tick the moment someone
+/// reordered or deleted a habit.
 class HabitCheckinService {
   HabitCheckinService._();
   static final HabitCheckinService instance = HabitCheckinService._();
-
-  static const int checkCount = 4;
 
   Isar get _db => IsarService.instance.db;
 
   static String dayKeyFor(DateTime date) =>
       '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
 
-  Future<List<bool>> getChecksForDate(DateTime date) async {
+  static DateTime? parseDayKey(String key) => DateTime.tryParse(key);
+
+  /// Ticked habit uids for [date].
+  Future<Set<String>> getCheckedForDate(DateTime date) async {
     final rows = await _db.habitCheckins
         .filter()
         .dayKeyEqualTo(dayKeyFor(date))
         .deletedAtIsNull()
+        .isCheckedEqualTo(true)
         .findAll();
-
-    final checks = List<bool>.filled(checkCount, false);
-    for (final row in rows) {
-      if (row.checkIndex < 0 || row.checkIndex >= checkCount) continue;
-      checks[row.checkIndex] = row.isChecked;
-    }
-    return checks;
+    return rows.map((row) => row.habitUid).toSet();
   }
 
-  Future<void> setCheckForDate(DateTime date, int index, bool value) async {
-    if (index < 0 || index >= checkCount) return;
-    final dayKey = dayKeyFor(date);
-    final uid = HabitCheckin.uidFor(dayKey, index);
+  Future<bool> isChecked(DateTime date, String habitUid) async {
+    final row = await _db.habitCheckins
+        .filter()
+        .uidEqualTo(HabitCheckin.uidFor(dayKeyFor(date), habitUid))
+        .deletedAtIsNull()
+        .findFirst();
+    return row?.isChecked ?? false;
+  }
 
-    // Unticking keeps the row and flips the flag rather than deleting it.
-    // A value change carries its own updatedAt, so last-writer-wins resolves
-    // it without needing a tombstone.
+  Future<void> setChecked(
+    DateTime date,
+    String habitUid,
+    bool value,
+  ) async {
+    if (habitUid.isEmpty) return;
+    final dayKey = dayKeyFor(date);
+    final uid = HabitCheckin.uidFor(dayKey, habitUid);
+
+    // Unticking keeps the row and flips the flag rather than deleting it. A
+    // value change carries its own updatedAt, so last-writer-wins resolves it
+    // without needing a tombstone.
     final existing =
         await _db.habitCheckins.filter().uidEqualTo(uid).findFirst();
     final row = existing ?? (HabitCheckin()..uid = uid);
     row
       ..dayKey = dayKey
-      ..checkIndex = index
+      ..habitUid = habitUid
       ..isChecked = value
       ..deletedAt = null
       ..updatedAt = DateTime.now();
@@ -58,32 +67,60 @@ class HabitCheckinService {
     await LocalChanges.instance.notify();
   }
 
+  /// Habits that were already defined on [day]. A habit added today is not
+  /// expected on days before it existed, so adding one cannot retroactively
+  /// break a streak.
+  static List<Habit> _expectedOn(List<Habit> habits, DateTime day) => habits
+      .where((h) => !h.createdAt.isAfter(day))
+      .toList();
+
   Future<bool> isDayComplete(DateTime date) async {
-    final checks = await getChecksForDate(date);
-    return checks.every((entry) => entry);
+    final habits = await _activeHabits();
+    final day = DateTime(date.year, date.month, date.day);
+    final expected = _expectedOn(habits, day);
+    if (expected.isEmpty) return false;
+
+    final checked = await getCheckedForDate(date);
+    return expected.every((h) => checked.contains(h.uid));
   }
 
-  /// Days on which every non-negotiable was ticked.
+  Future<List<Habit>> _activeHabits() => _db.habits
+      .filter()
+      .deletedAtIsNull()
+      .sortBySortOrder()
+      .build()
+      .findAll();
+
+  /// Days on which every habit then defined was ticked.
   ///
-  /// Reads the whole table once and groups in memory. The previous
-  /// implementation issued one lookup per day, which meant 3650 reads to
-  /// compute a streak.
+  /// Reads both tables once and groups in memory; the previous implementation
+  /// issued one lookup per day, which meant thousands of reads for a streak.
   Future<Set<String>> _completeDayKeys() async {
+    final habits = await _activeHabits();
+    if (habits.isEmpty) return <String>{};
+
     final rows = await _db.habitCheckins
         .filter()
         .deletedAtIsNull()
         .isCheckedEqualTo(true)
         .findAll();
 
-    final ticksPerDay = <String, Set<int>>{};
+    final tickedPerDay = <String, Set<String>>{};
     for (final row in rows) {
-      if (row.checkIndex < 0 || row.checkIndex >= checkCount) continue;
-      ticksPerDay.putIfAbsent(row.dayKey, () => <int>{}).add(row.checkIndex);
+      tickedPerDay.putIfAbsent(row.dayKey, () => <String>{}).add(row.habitUid);
     }
-    return ticksPerDay.entries
-        .where((entry) => entry.value.length == checkCount)
-        .map((entry) => entry.key)
-        .toSet();
+
+    final complete = <String>{};
+    for (final entry in tickedPerDay.entries) {
+      final day = parseDayKey(entry.key);
+      if (day == null) continue;
+      final expected = _expectedOn(habits, day);
+      if (expected.isEmpty) continue;
+      if (expected.every((h) => entry.value.contains(h.uid))) {
+        complete.add(entry.key);
+      }
+    }
+    return complete;
   }
 
   Future<int> getCurrentStreak() async {
@@ -94,7 +131,7 @@ class HabitCheckinService {
     var streak = 0;
     // An incomplete "today" doesn't break the streak — the day isn't over
     // yet. Otherwise a long streak would read 0 every morning until all of
-    // today's checks were done.
+    // today's habits were ticked.
     for (var i = 0; i < 3650; i++) {
       final day = DateTime(now.year, now.month, now.day - i);
       if (complete.contains(dayKeyFor(day))) {
@@ -115,9 +152,8 @@ class HabitCheckinService {
 
     final dates = <DateTime>{};
     for (final key in complete) {
-      final day = DateTime.tryParse(key);
-      if (day == null) continue;
-      if (day.isBefore(cutoff)) continue;
+      final day = parseDayKey(key);
+      if (day == null || day.isBefore(cutoff)) continue;
       dates.add(day);
     }
     return dates;

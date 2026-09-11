@@ -9,6 +9,7 @@ import '../../ai_coach/presentation/ai_weekly_review_section.dart';
 import '../providers/activity_provider.dart';
 import '../providers/analytics_provider.dart';
 import '../../premium/presentation/premium_gate.dart';
+import '../../../core/layout/adaptive_page.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -21,7 +22,7 @@ class AnalyticsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: SafeArea(
+      body: AdaptivePage.wide(child: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(analyticsDataProvider);
@@ -40,39 +41,29 @@ class AnalyticsScreen extends ConsumerWidget {
                     fontWeight: FontWeight.w700,
                   ),
                 ).animate().fadeIn(),
-
                 const SizedBox(height: 20),
-
                 PremiumLock(
                   title: 'Weekly AI review',
                   message: 'Wins, blockers and next week\'s focus — '
                       'part of Premium.',
                   child: AiWeeklyReviewSection(data: data),
-                )
-                    .animate()
-                    .fadeIn(delay: 60.ms)
-                    .slideY(begin: 0.05),
-
+                ).animate().fadeIn(delay: 60.ms).slideY(begin: 0.05),
                 const SizedBox(height: 20),
-
                 _WeekSummaryCard(data: data)
                     .animate()
                     .fadeIn(delay: 80.ms)
                     .slideY(begin: 0.05),
-
                 const SizedBox(height: 20),
-
                 _BarChartCard(data: data)
                     .animate()
                     .fadeIn(delay: 120.ms)
                     .slideY(begin: 0.05),
-
                 const SizedBox(height: 20),
-
                 if (data.goalStats.isNotEmpty) ...[
                   Text(
                     'Goals Breakdown',
-                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                    style:
+                        tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
                   ).animate().fadeIn(delay: 160.ms),
                   const SizedBox(height: 12),
                   ...data.goalStats.asMap().entries.map(
@@ -84,7 +75,6 @@ class AnalyticsScreen extends ConsumerWidget {
                       ),
                   const SizedBox(height: 20),
                 ],
-
                 _MonthlyHeatmap(data: data)
                     .animate()
                     .fadeIn(delay: 240.ms)
@@ -93,7 +83,7 @@ class AnalyticsScreen extends ConsumerWidget {
             ),
           ),
         ),
-      ),
+      )),
     );
   }
 }
@@ -323,9 +313,8 @@ class _BarChartCard extends StatelessWidget {
                     barRods: [
                       BarChartRodData(
                         toY: data.last7Days[i].toDouble(),
-                        color: i == 6
-                            ? cs.primary
-                            : cs.primary.withOpacity(0.4),
+                        color:
+                            i == 6 ? cs.primary : cs.primary.withOpacity(0.4),
                         width: 20,
                         borderRadius: const BorderRadius.vertical(
                           top: Radius.circular(6),

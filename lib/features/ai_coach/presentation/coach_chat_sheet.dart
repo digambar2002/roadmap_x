@@ -108,9 +108,8 @@ class _CoachChatSheetState extends ConsumerState<CoachChatSheet> {
                         ),
                         constraints: const BoxConstraints(maxWidth: 320),
                         decoration: BoxDecoration(
-                          color: isUser
-                              ? cs.primaryContainer
-                              : cs.surfaceVariant,
+                          color:
+                              isUser ? cs.primaryContainer : cs.surfaceVariant,
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
                             color: cs.outline.withOpacity(0.3),

@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:isar_community/isar.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/models.dart';
+import '../../features/habits/data/habit_repository.dart';
 import 'isar_service.dart';
 
 /// One-time upgrades of existing on-device data to the sync-capable schema.
@@ -18,7 +20,7 @@ class DbMigration {
   static final DbMigration instance = DbMigration._();
 
   static const _syncSchemaVersionKey = 'db_sync_schema_version';
-  static const _currentVersion = 2;
+  static const _currentVersion = 3;
 
   Isar get _db => IsarService.instance.db;
 
@@ -30,12 +32,17 @@ class DbMigration {
     if (from < 1) {
       await _stampSyncMetadata();
       await _backfillParentUids();
-      await _migrateHabitChecksFromPrefs(prefs);
       await _migrateScheduleCompletionsFromPrefs(prefs);
     }
 
     if (from < 2) {
       await _seedGoalPriorities();
+    }
+
+    if (from < 3) {
+      await _seedHabits(prefs);
+      await _rekeyHabitCheckinsByHabitUid();
+      await _migrateHabitChecksFromPrefs(prefs);
     }
 
     await prefs.setInt(_syncSchemaVersionKey, _currentVersion);
@@ -131,13 +138,133 @@ class DbMigration {
     });
   }
 
-  /// Moves `habit_checks_<day>` out of SharedPreferences and into per-checkbox
+  /// Carries the four fixed slots that used to live in SharedPreferences over
+  /// into [Habit] rows.
+  ///
+  /// Only for an *upgrade*. A brand new install seeds nothing, because it may
+  /// be a second device about to sign in: seeding starters there and then
+  /// pulling the account's real habits would leave the user looking at both
+  /// sets. With no legacy keys there is nothing to preserve anyway, and the
+  /// dashboard already prompts an empty list.
+  Future<void> _seedHabits(SharedPreferences prefs) async {
+    final existing = await _db.habits.filter().deletedAtIsNull().count();
+    if (existing > 0) return;
+
+    const legacyKeys = [
+      'non_neg_0_label',
+      'non_neg_1_label',
+      'non_neg_2_label',
+      'non_neg_3_label',
+    ];
+
+    final isUpgrade = legacyKeys.any(prefs.containsKey);
+    if (!isUpgrade) return;
+
+    const uuid = Uuid();
+    final rows = <Habit>[];
+    for (var i = 0; i < HabitRepository.starterHabits.length; i++) {
+      final starter = HabitRepository.starterHabits[i];
+      final saved = prefs.getString(legacyKeys[i])?.trim();
+      rows.add(
+        Habit()
+          ..uid = uuid.v4()
+          ..label = (saved == null || saved.isEmpty) ? starter.label : saved
+          ..iconKey = starter.iconKey
+          ..sortOrder = i
+          // Dated far back deliberately: these habits applied to every day
+          // already on record, so an existing streak must survive the move.
+          ..createdAt = DateTime(2000)
+          ..updatedAt = DateTime.now(),
+      );
+    }
+
+    await _db.writeTxn(() async => _db.habits.putAll(rows));
+
+    // They are rows now; leaving them in SharedPreferences would mean two
+    // sources of truth that drift apart.
+    for (final key in legacyKeys) {
+      await prefs.remove(key);
+    }
+    await _db.writeTxn(() async {
+      final stale = await _db.appSettings
+          .filter()
+          .anyOf(legacyKeys, (q, key) => q.uidEqualTo(key))
+          .findAll();
+      if (stale.isEmpty) return;
+      final now = DateTime.now();
+      for (final row in stale) {
+        row
+          ..deletedAt = now
+          ..updatedAt = now;
+      }
+      await _db.appSettings.putAll(stale);
+    });
+  }
+
+  /// Converts check-ins keyed by slot position to ones keyed by habit uid.
+  ///
+  /// Earlier builds stored `"2026-09-11#2"`. The index is only recoverable
+  /// from the uid, because the `checkIndex` column no longer exists on the
+  /// model — Isar drops a field it cannot see.
+  Future<void> _rekeyHabitCheckinsByHabitUid() async {
+    final habits = await _db.habits
+        .filter()
+        .deletedAtIsNull()
+        .sortBySortOrder()
+        .build()
+        .findAll();
+    if (habits.isEmpty) return;
+
+    final rows = await _db.habitCheckins.where().build().findAll();
+    final converted = <HabitCheckin>[];
+    final discarded = <int>[];
+
+    for (final row in rows) {
+      if (row.habitUid.isNotEmpty) continue;
+      final hash = row.uid.lastIndexOf('#');
+      if (hash < 0) continue;
+      final index = int.tryParse(row.uid.substring(hash + 1));
+      if (index == null || index < 0 || index >= habits.length) {
+        // A slot with no habit behind it any more: nothing to attribute the
+        // tick to, so drop it rather than invent an owner.
+        discarded.add(row.id);
+        continue;
+      }
+      final habitUid = habits[index].uid;
+      final dayKey = row.uid.substring(0, hash);
+      converted.add(
+        HabitCheckin()
+          ..uid = HabitCheckin.uidFor(dayKey, habitUid)
+          ..dayKey = dayKey
+          ..habitUid = habitUid
+          ..isChecked = row.isChecked
+          ..updatedAt = row.updatedAt
+          ..deletedAt = row.deletedAt,
+      );
+      discarded.add(row.id);
+    }
+
+    if (converted.isEmpty && discarded.isEmpty) return;
+    await _db.writeTxn(() async {
+      await _db.habitCheckins.deleteAll(discarded);
+      await _db.habitCheckins.putAll(converted);
+    });
+  }
+
+  /// Moves `habit_checks_<day>` out of SharedPreferences and into per-habit
   /// rows. A JSON blob keyed by day can only be merged wholesale, which loses
   /// one device's ticks whenever both devices touch the same day.
   Future<void> _migrateHabitChecksFromPrefs(SharedPreferences prefs) async {
     const prefix = 'habit_checks_';
     final keys = prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
     if (keys.isEmpty) return;
+
+    final habits = await _db.habits
+        .filter()
+        .deletedAtIsNull()
+        .sortBySortOrder()
+        .build()
+        .findAll();
 
     final rows = <HabitCheckin>[];
     final now = DateTime.now();
@@ -151,13 +278,13 @@ class DbMigration {
       } catch (_) {
         continue;
       }
-      for (var i = 0; i < decoded.length; i++) {
+      for (var i = 0; i < decoded.length && i < habits.length; i++) {
         if (!_parseBool(decoded[i])) continue;
         rows.add(
           HabitCheckin()
-            ..uid = HabitCheckin.uidFor(dayKey, i)
+            ..uid = HabitCheckin.uidFor(dayKey, habits[i].uid)
             ..dayKey = dayKey
-            ..checkIndex = i
+            ..habitUid = habits[i].uid
             ..isChecked = true
             // Past days are historical fact, not a live edit. Dating them to
             // the day they describe keeps a peer's newer edit winning.
@@ -165,9 +292,10 @@ class DbMigration {
         );
       }
     }
-    if (rows.isEmpty) return;
 
-    await _db.writeTxn(() async => _db.habitCheckins.putAll(rows));
+    if (rows.isNotEmpty) {
+      await _db.writeTxn(() async => _db.habitCheckins.putAll(rows));
+    }
     for (final key in keys) {
       await prefs.remove(key);
     }

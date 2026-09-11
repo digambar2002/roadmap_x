@@ -15,7 +15,8 @@ final accountProvider = StreamProvider<AccountState>((ref) {
 /// who has already paid.
 final isPremiumProvider = Provider<bool>((ref) {
   final account = ref.watch(accountProvider);
-  return account.valueOrNull?.isPremium ?? AccountService.instance.state.isPremium;
+  return account.valueOrNull?.isPremium ??
+      AccountService.instance.state.isPremium;
 });
 
 /// True when a backend is compiled into this build at all.

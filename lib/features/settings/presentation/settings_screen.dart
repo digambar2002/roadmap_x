@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -16,14 +15,17 @@ import '../../../core/services/notification_service.dart';
 import '../../../core/subscription/entitlements.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../premium/providers/premium_provider.dart';
-import '../../tasks/data/task_repository.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
-import '../../ai_coach/providers/ai_coach_provider.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../providers/backup_provider.dart';
 import '../providers/ai_settings_provider.dart';
-import '../providers/habit_checkin_provider.dart';
+import '../../habits/providers/habit_provider.dart';
 import '../providers/settings_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
+import '../../../core/layout/adaptive_sheet.dart';
+import '../../../core/layout/breakpoints.dart';
+import '../../tasks/data/task_repository.dart';
+import '../../admin/providers/admin_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -36,118 +38,120 @@ class SettingsScreen extends ConsumerWidget {
     final notifier = ref.read(settingsProvider.notifier);
 
     return Scaffold(
-      backgroundColor: cs.background,
+      backgroundColor: cs.surface,
       appBar: AppBar(
         title: Text('Settings',
             style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
-        backgroundColor: cs.background,
+        backgroundColor: cs.surface,
         elevation: 0,
         centerTitle: false,
       ),
-      body: settingsAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (settings) => ListView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
-          children: [
-            // ── Profile ──────────────────────────────────
-            _SectionHeader('Profile').animate().fadeIn(delay: 40.ms),
-            _NameField(
-              initialValue: settings.userName,
-              onChanged: (v) => notifier.setUserName(v),
-            ).animate().fadeIn(delay: 80.ms).slideY(begin: 0.05),
+      body: AdaptivePage(
+        child: settingsAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (settings) => ListView(
+            padding: EdgeInsets.fromLTRB(
+              context.pageGutter,
+              8,
+              context.pageGutter,
+              60,
+            ),
+            children: [
+              // ── Account ──────────────────────────────────
+              // Identity and sync first: it is the setting most likely to be
+              // wanted, and the one that explains why the others travel.
+              const _SectionHeader('Account'),
+              _NameField(
+                initialValue: settings.userName,
+                onChanged: notifier.setUserName,
+              ),
+              const SizedBox(height: 10),
+              const _PremiumTile(),
+              const _AdminTile(),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── Premium ───────────────────────────────────
-            _SectionHeader('Sync').animate().fadeIn(delay: 90.ms),
-            const _PremiumTile(),
+              // ── Daily habits ─────────────────────────────
+              const _SectionHeader('Daily habits'),
+              const _HabitsTile(),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── Theme ─────────────────────────────────────
-            _SectionHeader('Appearance').animate().fadeIn(delay: 100.ms),
-            _ThemeTile(
-              current: settings.themeMode,
-              onChanged: (m) => notifier.setThemeMode(m),
-            ).animate().fadeIn(delay: 120.ms).slideY(begin: 0.05),
+              // ── Appearance ───────────────────────────────
+              const _SectionHeader('Appearance'),
+              _ThemeTile(
+                current: settings.themeMode,
+                onChanged: notifier.setThemeMode,
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── Non-negotiables ───────────────────────────
-            _SectionHeader('Non-Negotiables').animate().fadeIn(delay: 140.ms),
-            Text(
-              'Daily commitments shown on the dashboard.',
-              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-            ).animate().fadeIn(delay: 160.ms),
-            const SizedBox(height: 12),
-            _NonNegotiablesEditor(
-              values: settings.nonNegotiables,
-              onItemChanged: (i, v) => notifier.setNonNegotiable(i, v),
-            ).animate().fadeIn(delay: 180.ms),
-
-            const SizedBox(height: 24),
-
-            // ── Notifications ─────────────────────────────
-            _SectionHeader('Notifications').animate().fadeIn(delay: 190.ms),
-            _NotificationTile(
-              enabled: settings.dailyReminderEnabled,
-              reminderHour: settings.dailyReminderHour,
-              reminderMinute: settings.dailyReminderMinute,
-              taskDueNotificationsEnabled: settings.taskDueNotificationsEnabled,
-              onChanged: (value) => _toggleDailyReminder(context, ref, value),
-              onReminderTimeChanged: (h, m) async {
-                await notifier.setDailyReminderTime(h, m);
-                if (settings.dailyReminderEnabled) {
-                  await NotificationService.instance.scheduleDailyReminder(
-                    hour: h,
-                    minute: m,
+              // ── Notifications ────────────────────────────
+              const _SectionHeader('Notifications'),
+              _NotificationTile(
+                enabled: settings.dailyReminderEnabled,
+                reminderHour: settings.dailyReminderHour,
+                reminderMinute: settings.dailyReminderMinute,
+                taskDueNotificationsEnabled:
+                    settings.taskDueNotificationsEnabled,
+                // Each of these does two things: store the preference *and*
+                // reschedule the OS notifications. Wiring the setters straight
+                // through would save the toggle and leave the alarms wrong.
+                onChanged: (value) => _toggleDailyReminder(context, ref, value),
+                onReminderTimeChanged: (hour, minute) async {
+                  await notifier.setDailyReminderTime(hour, minute);
+                  if (settings.dailyReminderEnabled) {
+                    await NotificationService.instance.scheduleDailyReminder(
+                      hour: hour,
+                      minute: minute,
+                    );
+                  }
+                },
+                onTaskDueNotificationsChanged: (value) async {
+                  await notifier.setTaskDueNotificationsEnabled(value);
+                  final tasks = await TaskRepository.instance.getAll();
+                  await NotificationService.instance.syncTaskDueNotifications(
+                    tasks,
+                    enabled: value,
                   );
-                }
-              },
-              onTaskDueNotificationsChanged: (v) async {
-                await notifier.setTaskDueNotificationsEnabled(v);
-                final tasks = await TaskRepository.instance.getAll();
-                await NotificationService.instance.syncTaskDueNotifications(
-                  tasks,
-                  enabled: v,
-                );
-              },
-            ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.05),
+                },
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── Data ──────────────────────────────────────
-            _SectionHeader('Data').animate().fadeIn(delay: 210.ms),
-            const _BackupSection().animate().fadeIn(delay: 220.ms),
-            const SizedBox(height: 8),
-            _ActionTile(
-              label: 'Import Backup File',
-              subtitle: 'Import from your saved roadmapx_backup.json file.',
-              icon: Icons.download_outlined,
-              onTap: () => _importFromFile(context, ref),
-            ).animate().fadeIn(delay: 225.ms),
-            const SizedBox(height: 8),
-            _DangerTile(
-              label: 'Clear All Data',
-              subtitle: 'Delete all goals, milestones and tasks.',
-              icon: Icons.delete_forever_outlined,
-              color: cs.error,
-              onTap: () => _clearAll(context, ref),
-            ).animate().fadeIn(delay: 230.ms),
+              // ── AI ───────────────────────────────────────
+              const _SectionHeader('AI coach'),
+              const _AiConfigurationTile(),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── AI Configuration ──────────────────────────
-            _SectionHeader('AI Configuration').animate().fadeIn(delay: 240.ms),
-            const _AiConfigurationTile().animate().fadeIn(delay: 250.ms),
+              // ── Data ─────────────────────────────────────
+              const _SectionHeader('Data'),
+              const _BackupSection(),
+              const SizedBox(height: 8),
+              _ActionTile(
+                label: 'Import backup file',
+                subtitle: 'Restore from a saved roadmapx_backup.json file.',
+                icon: Icons.download_outlined,
+                onTap: () => _importFromFile(context, ref),
+              ),
+              const SizedBox(height: 8),
+              _DangerTile(
+                label: 'Clear all data',
+                subtitle: 'Delete every goal, milestone and task.',
+                icon: Icons.delete_forever_outlined,
+                color: cs.error,
+                onTap: () => _clearAll(context, ref),
+              ),
 
-            const SizedBox(height: 24),
+              const SizedBox(height: 24),
 
-            // ── About ─────────────────────────────────────
-            _SectionHeader('About').animate().fadeIn(delay: 260.ms),
-            _AboutTile().animate().fadeIn(delay: 280.ms),
-          ],
+              // ── About ────────────────────────────────────
+              const _SectionHeader('About'),
+              _AboutTile(),
+            ],
+          ),
         ),
       ),
     );
@@ -290,17 +294,77 @@ class SettingsScreen extends ConsumerWidget {
   }
 }
 
-/// Invalidate every provider that caches preference-backed state so a
-/// restore/import is visible immediately instead of after an app restart.
+/// Rebuilds everything a restore or import can change, so the new data is
+/// visible immediately instead of after an app restart.
 void _invalidateRestoredProviders(WidgetRef ref) {
   ref.invalidate(settingsProvider);
   ref.invalidate(aiSettingsNotifierProvider);
+  ref.invalidate(habitsProvider);
   ref.invalidate(todayHabitChecksProvider);
   ref.read(habitActivityTickProvider.notifier).state++;
   bumpActivityTick(ref);
 }
 
-// ── Section header ────────────────────────────────────────
+/// Admin entry, rendered only for accounts in `public.admins`.
+///
+/// The server checks this independently on every write, so hiding the tile is
+/// a convenience rather than the security boundary.
+class _AdminTile extends ConsumerWidget {
+  const _AdminTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider).valueOrNull ?? false;
+    if (!isAdmin) return const SizedBox.shrink();
+
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: _SettingsSurface(
+        child: ListTile(
+          leading: Icon(Icons.admin_panel_settings_outlined, color: cs.primary),
+          title: const Text(
+            'Manage subscriptions',
+            style: TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: const Text('Activate or revoke other accounts'),
+          trailing: const Icon(Icons.chevron_right_rounded),
+          onTap: () => context.push('/admin'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry point to the habits page, with a live count so the section says
+/// something even before it is opened.
+class _HabitsTile extends ConsumerWidget {
+  const _HabitsTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final habits = ref.watch(habitsProvider).valueOrNull;
+    final count = habits?.length ?? 0;
+
+    return _SettingsSurface(
+      child: ListTile(
+        leading: Icon(Icons.checklist_rounded, color: cs.primary),
+        title: const Text(
+          'Non-negotiables',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(
+          count == 0
+              ? 'None yet — add the things you do every day'
+              : '$count habit${count == 1 ? '' : 's'} tracked daily',
+        ),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => context.push('/habits'),
+      ),
+    );
+  }
+}
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -343,6 +407,8 @@ class _PremiumTile extends ConsumerWidget {
       subtitle = 'Keep every device in step. Tap to activate.';
     } else if (status?.stage == SyncStage.syncing) {
       subtitle = 'Syncing…';
+    } else if (status?.stage == SyncStage.awaitingFirstSyncChoice) {
+      subtitle = 'Choose what to keep before syncing';
     } else if (status?.stage == SyncStage.error) {
       subtitle = 'Sync failed — will retry';
     } else {
@@ -389,7 +455,9 @@ class _SettingsSurface extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         child: Material(
           color: cs.surfaceContainerHighest,
-          child: padding == null ? child : Padding(padding: padding!, child: child),
+          child: padding == null
+              ? child
+              : Padding(padding: padding!, child: child),
         ),
       ),
     );
@@ -498,94 +566,6 @@ class _ThemeTile extends StatelessWidget {
 }
 
 // ── Non-negotiables editor ────────────────────────────────
-
-class _NonNegotiablesEditor extends StatefulWidget {
-  final List<String> values;
-  final void Function(int index, String value) onItemChanged;
-  const _NonNegotiablesEditor(
-      {required this.values, required this.onItemChanged});
-
-  @override
-  State<_NonNegotiablesEditor> createState() => _NonNegotiablesEditorState();
-}
-
-class _NonNegotiablesEditorState extends State<_NonNegotiablesEditor> {
-  late final List<TextEditingController> _controllers;
-  late final List<FocusNode> _focusNodes;
-
-  @override
-  void initState() {
-    super.initState();
-    _controllers = List.generate(
-      4,
-      (i) => TextEditingController(
-        text: i < widget.values.length ? widget.values[i] : '',
-      ),
-    );
-    _focusNodes = List.generate(4, (i) {
-      final node = FocusNode();
-      node.addListener(() {
-        if (!node.hasFocus) {
-          // Save only this field when focus leaves it, and only if the
-          // user actually changed it — an unconditional save would clobber
-          // values restored from a backup while this screen was open.
-          final trimmed = _controllers[i].text.trim();
-          final current = i < widget.values.length ? widget.values[i] : '';
-          if (trimmed != current) {
-            widget.onItemChanged(i, trimmed);
-          }
-        }
-      });
-      return node;
-    });
-  }
-
-  @override
-  void didUpdateWidget(covariant _NonNegotiablesEditor oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    for (var i = 0; i < _controllers.length; i++) {
-      final value = i < widget.values.length ? widget.values[i] : '';
-      if (_controllers[i].text != value && !_focusNodes[i].hasFocus) {
-        _controllers[i].text = value;
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    for (final c in _controllers) {
-      c.dispose();
-    }
-    for (final f in _focusNodes) {
-      f.dispose();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(4, (i) {
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: TextFormField(
-            controller: _controllers[i],
-            focusNode: _focusNodes[i],
-            decoration: InputDecoration(
-              labelText: 'Item ${i + 1}',
-              hintText: 'e.g. Exercise, Read, Journal...',
-              prefixIcon: const Icon(Icons.check_circle_outline, size: 20),
-            ),
-            textCapitalization: TextCapitalization.sentences,
-            onFieldSubmitted: (v) => widget.onItemChanged(i, v.trim()),
-          ),
-        );
-      }),
-    );
-  }
-}
-
-// ── Notification tile ─────────────────────────────────────
 
 class _NotificationTile extends StatelessWidget {
   final bool enabled;
@@ -823,7 +803,7 @@ class _BackupSection extends ConsumerWidget {
 
   Future<ImportMode?> _pickImportMode(BuildContext context) async {
     final cs = Theme.of(context).colorScheme;
-    return showModalBottomSheet<ImportMode>(
+    return showAdaptiveSheet<ImportMode>(
       context: context,
       builder: (context) => SafeArea(
         child: Material(
@@ -910,235 +890,6 @@ class _DangerTile extends StatelessWidget {
 
 // ── AI config tile ─────────────────────────────────────────
 
-class _AiConfigurationTile extends ConsumerStatefulWidget {
-  const _AiConfigurationTile();
-
-  @override
-  ConsumerState<_AiConfigurationTile> createState() =>
-      _AiConfigurationTileState();
-}
-
-class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
-  static const _models = <String, String>{
-    'gemini-2.5-flash': 'Gemini 2.5 Flash (Fast, Free tier)',
-    'gemini-2.5-pro': 'Gemini 2.5 Pro (Smarter, Slower)',
-  };
-
-  bool _editing = false;
-  bool _obscure = true;
-  late final TextEditingController _apiKeyCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _apiKeyCtrl = TextEditingController();
-  }
-
-  @override
-  void dispose() {
-    _apiKeyCtrl.dispose();
-    super.dispose();
-  }
-
-  String _masked(String key) {
-    if (key.length <= 4) return '••••';
-    return '••••••••${key.substring(key.length - 4)}';
-  }
-
-  Future<void> _launchKeyPage(BuildContext context) async {
-    final uri = Uri.parse('https://aistudio.google.com/app/apikey');
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not open browser.')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final ai = ref.watch(aiSettingsNotifierProvider);
-    final notifier = ref.read(aiSettingsNotifierProvider.notifier);
-    final hasKey = ai.apiKey != null && ai.apiKey!.isNotEmpty;
-
-    if (!_editing && hasKey && _apiKeyCtrl.text != ai.apiKey) {
-      _apiKeyCtrl.text = ai.apiKey!;
-    }
-
-    return _SettingsSurface(
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('🤖', style: TextStyle(fontSize: 18)),
-              const SizedBox(width: 8),
-              Text(
-                'AI Configuration',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleMedium
-                    ?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              if (hasKey)
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF34D399).withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.check_circle,
-                          size: 14, color: Color(0xFF34D399)),
-                      SizedBox(width: 4),
-                      Text('Saved',
-                          style: TextStyle(
-                              fontSize: 11, color: Color(0xFF34D399))),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Text(
-            'Gemini API Key',
-            style: Theme.of(context)
-                .textTheme
-                .labelLarge
-                ?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          if (_editing || !hasKey)
-            TextField(
-              controller: _apiKeyCtrl,
-              obscureText: _obscure,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(
-                hintText: 'Paste your API key',
-                prefixIcon: const Icon(Icons.key_outlined),
-                suffixIcon: IconButton(
-                  icon:
-                      Icon(_obscure ? Icons.visibility_off : Icons.visibility),
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                ),
-              ),
-            )
-          else
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              decoration: BoxDecoration(
-                color: cs.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: cs.outline),
-              ),
-              child: Text(
-                _masked(ai.apiKey!),
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(letterSpacing: 0.5),
-              ),
-            ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              if (_editing || !hasKey)
-                FilledButton.tonalIcon(
-                  onPressed: () async {
-                    final key = _apiKeyCtrl.text.trim();
-                    if (key.isEmpty) return;
-                    await notifier.saveApiKey(key);
-                    refreshAiCoachAfterSettingsChange(ref);
-                    if (mounted) {
-                      setState(() => _editing = false);
-                    }
-                  },
-                  icon: const Icon(Icons.save_outlined),
-                  label: const Text('Save'),
-                )
-              else
-                OutlinedButton.icon(
-                  onPressed: () => setState(() => _editing = true),
-                  icon: const Icon(Icons.edit_outlined),
-                  label: const Text('Edit'),
-                ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: hasKey
-                    ? () async {
-                        await notifier.clearApiKey();
-                        refreshAiCoachAfterSettingsChange(ref);
-                        if (mounted) {
-                          setState(() {
-                            _editing = false;
-                            _apiKeyCtrl.clear();
-                          });
-                        }
-                      }
-                    : null,
-                icon: const Icon(Icons.delete_outline),
-                label: const Text('Clear'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Model',
-            style: Theme.of(context)
-                .textTheme
-                .labelLarge
-                ?.copyWith(fontWeight: FontWeight.w600),
-          ),
-          const SizedBox(height: 8),
-          DropdownButtonFormField<String>(
-            isExpanded: true,
-            value:
-                _models.containsKey(ai.model) ? ai.model : 'gemini-2.5-flash',
-            decoration: const InputDecoration(
-              prefixIcon: Icon(Icons.psychology_alt_outlined),
-            ),
-            items: _models.entries
-                .map(
-                  (e) => DropdownMenuItem<String>(
-                    value: e.key,
-                    child: Text(
-                      e.value,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-              notifier.saveModel(value);
-            },
-          ),
-          const SizedBox(height: 12),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => _launchKeyPage(context),
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Get free API key'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── About tile ────────────────────────────────────────────
-
 class _AboutTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -1176,3 +927,174 @@ class _AboutTile extends StatelessWidget {
     );
   }
 }
+class _AiConfigurationTile extends ConsumerStatefulWidget {
+  const _AiConfigurationTile();
+
+  @override
+  ConsumerState<_AiConfigurationTile> createState() =>
+      _AiConfigurationTileState();
+}
+
+class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
+  static const _models = <String, String>{
+    'gemini-2.5-flash': 'Gemini 2.5 Flash (Fast, Free tier)',
+    'gemini-2.5-pro': 'Gemini 2.5 Pro (Smarter, Slower)',
+  };
+
+  late final TextEditingController _apiKeyCtrl = TextEditingController();
+  late final FocusNode _focus = FocusNode()..addListener(_commitOnBlur);
+  bool _obscure = true;
+  bool _hydrated = false;
+
+  @override
+  void dispose() {
+    _focus.removeListener(_commitOnBlur);
+    _focus.dispose();
+    _apiKeyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _commitOnBlur() {
+    if (_focus.hasFocus) return;
+    _commit();
+  }
+
+  /// Saves whatever is in the field.
+  ///
+  /// There is no Save button: a settings screen edits live state, and a button
+  /// only adds a way to lose the change by navigating away.
+  Future<void> _commit() async {
+    final key = _apiKeyCtrl.text.trim();
+    final current = ref.read(aiSettingsNotifierProvider).apiKey ?? '';
+    if (key == current) return;
+    await ref.read(aiSettingsNotifierProvider.notifier).saveApiKey(key);
+  }
+
+  Future<void> _clear() async {
+    _apiKeyCtrl.clear();
+    await ref.read(aiSettingsNotifierProvider.notifier).clearApiKey();
+  }
+
+  Future<void> _launchKeyPage() async {
+    final uri = Uri.parse('https://aistudio.google.com/app/apikey');
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open browser.')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+    final ai = ref.watch(aiSettingsNotifierProvider);
+    final notifier = ref.read(aiSettingsNotifierProvider.notifier);
+    final hasKey = (ai.apiKey ?? '').isNotEmpty;
+
+    // Seed the field once from storage; after that the field is the source of
+    // truth while it is being edited.
+    if (!_hydrated && ai.apiKey != null) {
+      _hydrated = true;
+      _apiKeyCtrl.text = ai.apiKey!;
+    }
+
+    return _SettingsSurface(
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Gemini API key',
+                  style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              if (hasKey)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.check_circle,
+                        size: 14, color: Color(0xFF34D399)),
+                    const SizedBox(width: 4),
+                    Text(
+                      'Connected',
+                      style: tt.labelSmall?.copyWith(
+                        color: const Color(0xFF34D399),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Your key stays on this device and is never included in backups '
+            'or sync.',
+            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _apiKeyCtrl,
+            focusNode: _focus,
+            obscureText: _obscure,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              hintText: 'Paste your key',
+              prefixIcon: const Icon(Icons.key_outlined, size: 20),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: _obscure ? 'Show' : 'Hide',
+                    icon: Icon(
+                      _obscure
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 18,
+                    ),
+                    onPressed: () => setState(() => _obscure = !_obscure),
+                  ),
+                  if (hasKey)
+                    IconButton(
+                      tooltip: 'Remove key',
+                      icon: Icon(Icons.close_rounded, size: 18, color: cs.error),
+                      onPressed: _clear,
+                    ),
+                ],
+              ),
+            ),
+            onSubmitted: (_) => _commit(),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            initialValue: _models.containsKey(ai.model) ? ai.model : null,
+            decoration: const InputDecoration(labelText: 'Model'),
+            items: [
+              for (final entry in _models.entries)
+                DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            ],
+            onChanged: (value) {
+              if (value != null) notifier.saveModel(value);
+            },
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _launchKeyPage,
+              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: const Text('Get a free API key'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+

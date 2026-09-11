@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/subscription/entitlements.dart';
 import '../../goals/data/goal_repository.dart';
 import '../providers/premium_provider.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 /// Gates for the paid features.
 ///
@@ -16,7 +17,8 @@ class PremiumGate {
 
   /// Call before creating a goal. Returns false when the free limit is
   /// reached, having already shown the upsell.
-  static Future<bool> ensureGoalSlot(BuildContext context, WidgetRef ref) async {
+  static Future<bool> ensureGoalSlot(
+      BuildContext context, WidgetRef ref) async {
     if (ref.read(isPremiumProvider)) return true;
 
     final active = await GoalRepository.instance.activeCount();
@@ -26,8 +28,7 @@ class PremiumGate {
     await _showUpsell(
       context,
       title: 'Goal limit reached',
-      message:
-          'The free tier keeps ${Entitlements.freeActiveGoalLimit} goals '
+      message: 'The free tier keeps ${Entitlements.freeActiveGoalLimit} goals '
           'active at once. Archive one to free a slot, or activate '
           '${Entitlements.productName} for unlimited goals.',
     );
@@ -41,8 +42,7 @@ class PremiumGate {
     await _showUpsell(
       context,
       title: 'AI coach is a premium feature',
-      message:
-          'Daily briefings, weekly reviews and AI-built plans come with '
+      message: 'Daily briefings, weekly reviews and AI-built plans come with '
           '${Entitlements.productName}.',
     );
     return false;
@@ -56,7 +56,7 @@ class PremiumGate {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    await showModalBottomSheet<void>(
+    await showAdaptiveSheet<void>(
       context: context,
       backgroundColor: cs.surface,
       shape: const RoundedRectangleBorder(
@@ -147,14 +147,13 @@ class PremiumLock extends ConsumerWidget {
                   children: [
                     Text(
                       title,
-                      style: tt.titleSmall
-                          ?.copyWith(fontWeight: FontWeight.w700),
+                      style:
+                          tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       message,
-                      style: tt.bodySmall
-                          ?.copyWith(color: cs.onSurfaceVariant),
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ],
                 ),

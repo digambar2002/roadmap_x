@@ -23,6 +23,7 @@ class IsarService {
         MilestoneSchema,
         TaskSchema,
         ScheduleItemSchema,
+        HabitSchema,
         HabitCheckinSchema,
         ScheduleCompletionSchema,
         AppSettingSchema,

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 Future<T?> showCoachBottomSheet<T>(
   BuildContext context,
   Widget child,
 ) {
-  return showModalBottomSheet<T>(
+  return showAdaptiveSheet<T>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
     builder: (ctx) {
       final height = MediaQuery.sizeOf(ctx).height * 0.88;

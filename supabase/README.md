@@ -106,3 +106,40 @@ Earlier experimental tables (`goals`, `milestones`, `tasks`, `roadmap_items`)
 were dropped along with their triggers and the `touch_updated_at` function.
 `auth.schema_migrations` and `realtime.schema_migrations` are Supabase's own
 internals and were left alone.
+
+## Admin panel
+
+**Settings → Account → Manage subscriptions** (visible only to admins) lists
+every account with its status and grants **1 month / 6 months / 1 year**, or
+revokes.
+
+Periods **extend** rather than reset: granting a month to someone with two
+weeks left leaves them six weeks. A period that was revoked or has already
+elapsed is *not* carried forward — a grant after either starts from today. A
+lifetime account (`premium_until` null) is never downgraded to a fixed term.
+That arithmetic lives in `public.grant_premium()` so two admins acting at once
+cannot silently shorten a subscription.
+
+### Making someone an admin
+
+There is deliberately no way to do this from the app. In the SQL editor:
+
+```sql
+insert into public.admins (user_id)
+select id from auth.users where email = 'them@example.com'
+on conflict do nothing;
+```
+
+To remove: `delete from public.admins where user_id = (select id from auth.users where email = '...');`
+
+The screen is hidden from non-admins, but that is convenience, not the
+boundary: `grant_premium()` re-checks `is_admin()` before every write, and the
+`profiles` policies refuse reads of other people's rows. A patched client gets
+nothing.
+
+### Why the panel is in the app and not a web page
+
+It needs to write `profiles`, which RLS only allows for admins — so it must run
+as a signed-in admin. A static hosted page could only do that by embedding a
+`service_role` key, which bypasses every policy in the database and is unsafe
+to ship in any client.

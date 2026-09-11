@@ -28,6 +28,8 @@ import 'widgets/create_edit_milestone_sheet.dart';
 import 'widgets/create_edit_task_sheet.dart';
 import '../../premium/presentation/premium_gate.dart';
 import '../../premium/providers/premium_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
   final int goalId;
@@ -63,10 +65,10 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
       loading: () => Scaffold(
         backgroundColor: cs.background,
         appBar: AppBar(),
-        body: const Center(child: CircularProgressIndicator()),
+        body: AdaptivePage(child: const Center(child: CircularProgressIndicator())),
       ),
       error: (e, _) => Scaffold(
-        body: Center(child: Text('Error: $e')),
+        body: AdaptivePage(child: Center(child: Text('Error: $e'))),
       ),
       data: (goal) {
         if (goal == null) {
@@ -78,7 +80,7 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
               if (context.mounted) context.pop();
             });
           }
-          return const Scaffold(body: SizedBox.shrink());
+          return const Scaffold(body: AdaptivePage(child: SizedBox.shrink()));
         }
         return _GoalDetailBody(
           goal: goal,
@@ -111,7 +113,7 @@ class _GoalDetailBody extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: Stack(
+      body: AdaptivePage(child: Stack(
         children: [
           CustomScrollView(
             slivers: [
@@ -144,7 +146,7 @@ class _GoalDetailBody extends ConsumerWidget {
                   ],
                   IconButton(
                     icon: const Icon(Icons.edit_outlined),
-                    onPressed: () => showModalBottomSheet(
+                    onPressed: () => showAdaptiveSheet(
                       context: context,
                       isScrollControlled: true,
                       backgroundColor: Colors.transparent,
@@ -244,12 +246,12 @@ class _GoalDetailBody extends ConsumerWidget {
             ),
           ),
         ],
-      ),
+      )),
     );
   }
 
   void _addMilestone(BuildContext context) {
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -528,8 +530,7 @@ class _MilestoneCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final tasksAsync =
-        ref.watch(tasksForMilestoneProvider(milestone.id));
+    final tasksAsync = ref.watch(tasksForMilestoneProvider(milestone.id));
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -777,7 +778,7 @@ class _TasksList extends ConsumerWidget {
   }
 
   void _openAddTask(BuildContext context) {
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -868,7 +869,6 @@ class _TaskRow extends ConsumerWidget {
                   child:
                       Icon(Icons.notes, size: 14, color: cs.onSurfaceVariant),
                 ),
-
             ],
           ),
         ),
@@ -902,7 +902,7 @@ class _TaskRow extends ConsumerWidget {
   }
 
   void _openEdit(BuildContext context) {
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

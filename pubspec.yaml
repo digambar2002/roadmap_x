@@ -58,18 +58,38 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  integration_test:
+    sdk: flutter
   flutter_lints: ^6.0.0
   isar_community_generator: ^3.3.2
   build_runner: ^2.4.9
   flutter_launcher_icons: ^0.14.3
 
-flutter_icons:
-  android: true
-  ios: true
+flutter_launcher_icons:
   image_path: "assets/icon/app_icon.png"
+
+  android: true
   min_sdk_android: 21
-  adaptive_icon_background: "#2B3DFF"
-  adaptive_icon_foreground: "assets/icon/app_icon.png"
+  # Android masks the icon to a circle/squircle and composites it over this
+  # colour, so the source needs padding around the artwork or the mask clips it.
+  adaptive_icon_background: "#FFFFFF"
+  # A separately padded source: the launcher mask would otherwise clip the
+  # plume and the map's curled corners off the full-bleed artwork.
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+
+  ios: true
+  # iOS forbids transparency in app icons and will reject an alpha channel at
+  # submission; this flattens it onto white instead.
+  remove_alpha_ios: true
+
+  macos:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -82,10 +102,8 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/icon/app_icon.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

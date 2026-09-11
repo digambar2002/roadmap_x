@@ -17,18 +17,14 @@ class SyncedSettings {
   SyncedSettings._();
   static final SyncedSettings instance = SyncedSettings._();
 
-  /// Deliberately narrow.
-  ///
+  /// Deliberately narrow. The Gemini API key is a secret and never leaves the
+  /// device at all.
   /// Excluded: `theme_mode` and the notification settings, which describe the
-  /// device rather than the user, and would be actively annoying to have
-  /// overwritten from a phone onto a laptop. The Gemini API key is a secret
-  /// and never leaves the device at all.
+  /// device rather than the user. The non-negotiable labels used to live here
+  /// too; they are [Habit] rows now, which is what lets the user add and
+  /// remove them instead of being stuck with exactly four.
   static const Set<String> syncedKeys = {
     'user_name',
-    'non_neg_0_label',
-    'non_neg_1_label',
-    'non_neg_2_label',
-    'non_neg_3_label',
   };
 
   final _controller = StreamController<void>.broadcast();

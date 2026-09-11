@@ -186,16 +186,49 @@ class ScheduleItem {
 // HabitCheckin
 // ─────────────────────────────────────────────────────────
 
-/// One row per (day, checkbox) rather than one row per day.
+/// A daily non-negotiable the user has defined.
 ///
-/// Day-granularity would mean device A checking box 0 and device B checking
-/// box 2 on the same day are two conflicting writes to one row, and
-/// last-writer-wins would silently discard one of them. Per-checkbox rows
-/// never collide, so the merge is lossless.
+/// These were four fixed slots in SharedPreferences. As rows they can be
+/// added, renamed, reordered and removed, and they sync like everything else.
+@Collection()
+class Habit {
+  Id id = Isar.autoIncrement;
+
+  @Index(unique: true)
+  late String uid;
+  late String label;
+
+  /// Key into `HabitIcons.catalog`, not a raw code point.
+  ///
+  /// Building `IconData` from a stored integer defeats Flutter's icon tree
+  /// shaking, which then fails the release build outright. A key into a table
+  /// of const IconData keeps every glyph statically reachable.
+  late String iconKey;
+
+  late int sortOrder;
+
+  /// A habit is only expected on days at or after this.
+  ///
+  /// Without it, adding a habit today would retroactively mark every past day
+  /// incomplete and wipe out an existing streak.
+  late DateTime createdAt;
+
+  @Index()
+  late DateTime updatedAt;
+  DateTime? deletedAt;
+  DateTime? syncedAt;
+}
+
+/// One row per (day, habit) rather than one row per day.
 ///
-/// [uid] is derived (`"2026-09-11#2"`), not random: two devices that tick the
-/// same box offline produce the same uid, so they converge on one row instead
-/// of creating duplicates.
+/// Day-granularity would mean device A ticking one habit and device B ticking
+/// another on the same day are two conflicting writes to one row, and
+/// last-writer-wins would silently discard one of them. Per-habit rows never
+/// collide, so the merge is lossless.
+///
+/// [uid] is derived (`"2026-09-11#<habitUid>"`), not random: two devices that
+/// tick the same habit offline produce the same uid, so they converge on one
+/// row instead of creating duplicates.
 @Collection()
 class HabitCheckin {
   Id id = Isar.autoIncrement;
@@ -205,7 +238,9 @@ class HabitCheckin {
 
   @Index()
   late String dayKey; // "2026-09-11"
-  late int checkIndex; // 0..HabitCheckinService.checkCount-1
+
+  @Index()
+  late String habitUid;
   late bool isChecked;
 
   @Index()
@@ -213,8 +248,8 @@ class HabitCheckin {
   DateTime? deletedAt;
   DateTime? syncedAt;
 
-  static String uidFor(String dayKey, int checkIndex) =>
-      '$dayKey#$checkIndex';
+  static String uidFor(String dayKey, String habitUid) =>
+      '$dayKey#$habitUid';
 }
 
 // ─────────────────────────────────────────────────────────

@@ -21,6 +21,11 @@ enum SyncStage {
   /// Signed in on a free account. Sync is the paid feature.
   inactive,
 
+  /// First sign-in on a device that already holds data. Syncing would add the
+  /// account's rows to the local ones rather than replacing them, so the user
+  /// has to say which they meant before anything is written.
+  awaitingFirstSyncChoice,
+
   /// Entitled and up to date.
   idle,
 
@@ -28,6 +33,17 @@ enum SyncStage {
 
   /// Last attempt failed; local data is untouched and it will retry.
   error,
+}
+
+/// What to do with data already on the device when signing in to an account
+/// that has its own.
+enum FirstSyncChoice {
+  /// Keep both sets. Nothing is lost, but near-identical entries made in both
+  /// places will both be present.
+  mergeBoth,
+
+  /// Discard what is on this device and take the account's copy.
+  useAccountData,
 }
 
 class SyncStatus {
@@ -85,6 +101,10 @@ class SyncService {
   static final SyncService instance = SyncService._();
 
   static const _cursorKey = 'sync_pull_cursor';
+
+  /// Per-account marker: this device has already reconciled with this account,
+  /// so later sign-ins go straight to syncing.
+  static const _initialisedPrefix = 'sync_initialised_';
   static const _lastSyncedKey = 'sync_last_completed_at';
 
   /// Server collection names, which double as the keys the snapshot importer
@@ -95,6 +115,7 @@ class SyncService {
     'milestones',
     'tasks',
     'scheduleItems',
+    'habits',
     'habitCheckins',
     'scheduleCompletions',
     'appSettings',
@@ -162,7 +183,68 @@ class SyncService {
       return;
     }
     _setupRealtime(state.userId!);
-    unawaited(syncNow());
+    unawaited(_beginSync(state.userId!));
+  }
+
+  bool _isInitialised(String userId) =>
+      _prefs?.getBool('$_initialisedPrefix$userId') ?? false;
+
+  Future<void> _markInitialised(String userId) async {
+    await _prefs?.setBool('$_initialisedPrefix$userId', true);
+  }
+
+  /// Anything the user could have created before signing in.
+  Future<bool> _hasLocalData() async {
+    final goals = await _db.goals.filter().deletedAtIsNull().count();
+    if (goals > 0) return true;
+    final habits = await _db.habits.filter().deletedAtIsNull().count();
+    if (habits > 0) return true;
+    final schedule = await _db.scheduleItems.filter().deletedAtIsNull().count();
+    return schedule > 0;
+  }
+
+  /// Starts the first sync for an account, asking first when that would mix
+  /// two separate sets of data together.
+  Future<void> _beginSync(String userId) async {
+    if (!_isInitialised(userId) && await _hasLocalData()) {
+      _emit(SyncStatus(
+        stage: SyncStage.awaitingFirstSyncChoice,
+        lastSyncedAt: _lastSyncedAt,
+      ));
+      return;
+    }
+    await _markInitialised(userId);
+    await syncNow();
+  }
+
+  /// Resolves the first-sign-in question and starts syncing.
+  ///
+  /// [FirstSyncChoice.useAccountData] deletes what is on this device, which is
+  /// the point — it is how someone discards a few things they made while
+  /// trying the app out before signing in.
+  Future<void> resolveFirstSync(FirstSyncChoice choice) async {
+    final userId = _account.state.userId;
+    if (userId == null) return;
+
+    if (choice == FirstSyncChoice.useAccountData) {
+      await _clearLocalData();
+      await resetCursor();
+    }
+    await _markInitialised(userId);
+    await syncNow();
+  }
+
+  Future<void> _clearLocalData() async {
+    await _db.writeTxn(() async {
+      await _db.tasks.clear();
+      await _db.milestones.clear();
+      await _db.goals.clear();
+      await _db.scheduleItems.clear();
+      await _db.habitCheckins.clear();
+      await _db.habits.clear();
+      await _db.scheduleCompletions.clear();
+      await _db.appSettings.clear();
+    });
   }
 
   // ── Triggers ──────────────────────────────────────────────
@@ -302,6 +384,16 @@ class SyncService {
         collection: 'scheduleItems',
         uid: row.uid,
         data: DataExportService.scheduleItemToMap(row),
+        updatedAt: row.updatedAt,
+        deletedAt: row.deletedAt,
+      ));
+    }
+    for (final row in await _db.habits.where().build().findAll()) {
+      if (!_isDirty(row.updatedAt, row.syncedAt)) continue;
+      rows.add(_PendingRow(
+        collection: 'habits',
+        uid: row.uid,
+        data: DataExportService.habitToMap(row),
         updatedAt: row.updatedAt,
         deletedAt: row.deletedAt,
       ));
@@ -509,6 +601,19 @@ class SyncService {
               touched.add(row);
             }
             if (touched.isNotEmpty) await _db.scheduleItems.putAll(touched);
+
+          case 'habits':
+            final rows = await _db.habits
+                .filter()
+                .anyOf(keys, (q, uid) => q.uidEqualTo(uid))
+                .findAll();
+            final touched = <Habit>[];
+            for (final row in rows) {
+              if (row.updatedAt.isAfter(uids[row.uid]!)) continue;
+              row.syncedAt = row.updatedAt;
+              touched.add(row);
+            }
+            if (touched.isNotEmpty) await _db.habits.putAll(touched);
 
           case 'habitCheckins':
             final rows = await _db.habitCheckins

@@ -33,6 +33,7 @@ class AiSettingsNotifier extends Notifier<AiSettingsState> {
   }
 }
 
-final aiSettingsNotifierProvider = NotifierProvider<AiSettingsNotifier, AiSettingsState>(
+final aiSettingsNotifierProvider =
+    NotifierProvider<AiSettingsNotifier, AiSettingsState>(
   AiSettingsNotifier.new,
 );

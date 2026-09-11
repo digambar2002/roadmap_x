@@ -15,6 +15,8 @@ import '../../../shared/widgets/empty_state.dart';
 import '../../goals/providers/goal_provider.dart';
 import '../data/schedule_repository.dart';
 import '../providers/schedule_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 class ScheduleScreen extends ConsumerWidget {
   const ScheduleScreen({super.key});
@@ -41,7 +43,7 @@ class ScheduleScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: SafeArea(
+      body: AdaptivePage(child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -62,11 +64,12 @@ class ScheduleScreen extends ConsumerWidget {
                 today: today,
                 weekStart: weekStart,
                 onSelect: (i) {
-                  ref.read(selectedScheduleDateProvider.notifier).state = DateTime(
-                        weekStart.year,
-                        weekStart.month,
-                        weekStart.day + i,
-                      );
+                  ref.read(selectedScheduleDateProvider.notifier).state =
+                      DateTime(
+                    weekStart.year,
+                    weekStart.month,
+                    weekStart.day + i,
+                  );
                 },
               ),
             ).animate().fadeIn(delay: 80.ms),
@@ -89,7 +92,7 @@ class ScheduleScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
+      )),
       floatingActionButton: FloatingActionButton(
         heroTag: 'schedule_fab',
         onPressed: () => _openCreate(context),
@@ -99,7 +102,7 @@ class ScheduleScreen extends ConsumerWidget {
   }
 
   void _openCreate(BuildContext context) {
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -200,12 +203,12 @@ class _ScheduleList extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: sorted.length,
       itemBuilder: (context, i) => _ScheduleItemCard(
-            // Key the card by item uid so a State isn't reused for a
-            // different item when deletions shift list positions.
-            key: ValueKey(sorted[i].uid),
-            item: sorted[i],
-            selectedDate: selectedDate,
-          ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
+        // Key the card by item uid so a State isn't reused for a
+        // different item when deletions shift list positions.
+        key: ValueKey(sorted[i].uid),
+        item: sorted[i],
+        selectedDate: selectedDate,
+      ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
     );
   }
 
@@ -398,30 +401,31 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
                               GestureDetector(
                                 onTap: linkedGoal == null
                                     ? null
-                                    : () => context.push('/focus/${linkedGoal!.id}'),
+                                    : () => context
+                                        .push('/focus/${linkedGoal!.id}'),
                                 child: Row(
-                                children: [
-                                  Icon(Icons.flag_outlined,
-                                      size: 13, color: accentColor),
-                                  const SizedBox(width: 6),
-                                  Text(goalName!,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: accentColor,
-                                        fontWeight: FontWeight.w500,
-                                      )),
-                                  const Spacer(),
-                                  if (linkedGoal != null)
-                                    Text(
-                                      'Focus →',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: accentColor,
-                                        fontWeight: FontWeight.w600,
+                                  children: [
+                                    Icon(Icons.flag_outlined,
+                                        size: 13, color: accentColor),
+                                    const SizedBox(width: 6),
+                                    Text(goalName!,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: accentColor,
+                                          fontWeight: FontWeight.w500,
+                                        )),
+                                    const Spacer(),
+                                    if (linkedGoal != null)
+                                      Text(
+                                        'Focus →',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: accentColor,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
-                                    ),
-                                ],
-                              ),
+                                  ],
+                                ),
                               ),
                             ],
                             if (_linkedTasks.isNotEmpty) ...[
@@ -469,7 +473,7 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
   }
 
   void _openEdit(BuildContext context) {
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,

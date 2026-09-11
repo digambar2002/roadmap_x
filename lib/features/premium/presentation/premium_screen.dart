@@ -8,6 +8,8 @@ import '../../../core/subscription/entitlements.dart';
 import '../../../core/sync/account_service.dart';
 import '../../../core/sync/sync_service.dart';
 import '../providers/premium_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
+import '../../../shared/widgets/confirmation_dialog.dart';
 
 class PremiumScreen extends ConsumerWidget {
   const PremiumScreen({super.key});
@@ -16,8 +18,8 @@ class PremiumScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final account = ref.watch(accountProvider).valueOrNull ??
-        AccountService.instance.state;
+    final account =
+        ref.watch(accountProvider).valueOrNull ?? AccountService.instance.state;
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -30,11 +32,12 @@ class PremiumScreen extends ConsumerWidget {
         elevation: 0,
         centerTitle: false,
       ),
-      body: ListView(
+      body: AdaptivePage(child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
         children: [
           const _PerksCard(),
           const SizedBox(height: 24),
+          const _FirstSyncChoiceCard(),
           if (!account.isConfigured)
             const _UnavailableCard()
           else if (account.isPremium)
@@ -51,8 +54,95 @@ class PremiumScreen extends ConsumerWidget {
             style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
           ),
         ],
+      )),
+    );
+  }
+}
+
+/// Asked once, the first time an account signs in on a device that already
+/// holds data.
+///
+/// Without it the first sync silently unions the two sets: someone who tried
+/// the app out, made a few goals, then signed in would find their trial goals
+/// sitting alongside the real ones with no way to tell which was which.
+class _FirstSyncChoiceCard extends ConsumerWidget {
+  const _FirstSyncChoiceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final status =
+        ref.watch(syncStatusProvider).valueOrNull ?? SyncService.instance.status;
+    if (status.stage != SyncStage.awaitingFirstSyncChoice) {
+      return const SizedBox.shrink();
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: _Card(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.merge_type_rounded, color: cs.primary),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'This device already has data',
+                    style:
+                        tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Your account also has goals and habits saved. Choose what to '
+              'keep before syncing starts.',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                onPressed: () => SyncService.instance
+                    .resolveFirstSync(FirstSyncChoice.mergeBoth),
+                child: const Text('Keep both'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () => _confirmReplace(context),
+                child: const Text('Use my account data instead'),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Keeping both never loses anything, but anything you created '
+              'twice will appear twice.',
+              style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+            ),
+          ],
+        ),
       ),
     );
+  }
+
+  Future<void> _confirmReplace(BuildContext context) async {
+    final confirmed = await ConfirmationDialog.show(
+      context,
+      title: 'Replace this device\'s data?',
+      message: 'Everything currently on this device will be deleted and '
+          'replaced with your account\'s data. This cannot be undone.',
+      confirmLabel: 'Replace',
+    );
+    if (!confirmed) return;
+    await SyncService.instance.resolveFirstSync(FirstSyncChoice.useAccountData);
   }
 }
 
@@ -313,11 +403,12 @@ class _AwaitingActivationCard extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       account.email ?? '—',
-                      style: tt.bodyMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style:
+                          tt.bodyMedium?.copyWith(fontWeight: FontWeight.w600),
                     ),
                   ),
-                  Icon(Icons.copy_rounded, size: 16, color: cs.onSurfaceVariant),
+                  Icon(Icons.copy_rounded,
+                      size: 16, color: cs.onSurfaceVariant),
                 ],
               ),
             ),
@@ -388,6 +479,8 @@ class _ActiveCard extends ConsumerWidget {
         return 'Signed out';
       case SyncStage.unavailable:
         return 'Sync unavailable';
+      case SyncStage.awaitingFirstSyncChoice:
+        return 'Waiting for you to choose what to keep';
     }
   }
 
@@ -395,10 +488,10 @@ class _ActiveCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final account = ref.watch(accountProvider).valueOrNull ??
-        AccountService.instance.state;
-    final status =
-        ref.watch(syncStatusProvider).valueOrNull ?? SyncService.instance.status;
+    final account =
+        ref.watch(accountProvider).valueOrNull ?? AccountService.instance.state;
+    final status = ref.watch(syncStatusProvider).valueOrNull ??
+        SyncService.instance.status;
     final isError = status.stage == SyncStage.error;
 
     return _Card(

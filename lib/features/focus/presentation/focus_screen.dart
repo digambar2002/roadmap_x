@@ -10,6 +10,7 @@ import '../../analytics/providers/activity_provider.dart';
 import '../../goals/providers/goal_provider.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../tasks/providers/task_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
 
 class FocusScreen extends ConsumerWidget {
   final int goalId;
@@ -28,7 +29,7 @@ class FocusScreen extends ConsumerWidget {
         title: const Text('Focus Mode'),
         backgroundColor: cs.background,
       ),
-      body: goalAsync.when(
+      body: AdaptivePage(child: goalAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (goal) {
@@ -158,7 +159,7 @@ class FocusScreen extends ConsumerWidget {
             },
           );
         },
-      ),
+      )),
     );
   }
 }

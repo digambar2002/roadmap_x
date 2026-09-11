@@ -156,3 +156,111 @@ end $$;
 
 -- Needed for realtime to report which row changed on an update.
 alter table public.records replica identity full;
+
+-- ─────────────────────────────────────────────────────────────
+-- admins — who may activate other people's accounts
+-- ─────────────────────────────────────────────────────────────
+-- Membership is granted by hand from the table editor, exactly like premium.
+-- There is deliberately no way to add yourself from the client.
+
+create table if not exists public.admins (
+  user_id    uuid primary key references auth.users on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+alter table public.admins enable row level security;
+
+drop policy if exists "read own admin row" on public.admins;
+create policy "read own admin row" on public.admins
+  for select using (auth.uid() = user_id);
+
+create or replace function public.is_admin(uid uuid)
+returns boolean
+language sql
+security definer set search_path = public
+stable
+as $$
+  select exists (select 1 from public.admins a where a.user_id = uid);
+$$;
+
+-- Admins can see and edit every profile. Ordinary users keep their existing
+-- read-own-row policy and still cannot write their own premium flag.
+drop policy if exists "admins read all profiles" on public.profiles;
+create policy "admins read all profiles" on public.profiles
+  for select using (public.is_admin(auth.uid()));
+
+drop policy if exists "admins update profiles" on public.profiles;
+create policy "admins update profiles" on public.profiles
+  for update using (public.is_admin(auth.uid()))
+         with check (public.is_admin(auth.uid()));
+
+-- ─────────────────────────────────────────────────────────────
+-- grant_premium() — the one operation the admin screen performs
+-- ─────────────────────────────────────────────────────────────
+-- A function rather than a bare UPDATE so the *extension* rule lives on the
+-- server: granting a month to someone with two weeks left gives them six
+-- weeks, not four. Doing that arithmetic in the client would let two admins
+-- racing each other silently shorten a subscription.
+--
+-- months = 0 revokes. A null premium_until means no expiry.
+
+create or replace function public.grant_premium(
+  target_email text,
+  months int
+)
+returns table (email text, is_premium boolean, premium_until timestamptz)
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  target       uuid;
+  cur_premium  boolean;
+  cur_until    timestamptz;
+  base         timestamptz;
+begin
+  if not public.is_admin(auth.uid()) then
+    raise exception 'not authorised';
+  end if;
+
+  select p.id, p.is_premium, p.premium_until
+    into target, cur_premium, cur_until
+  from public.profiles p
+  where p.email = target_email;
+
+  if target is null then
+    raise exception 'no account for %', target_email;
+  end if;
+
+  if months <= 0 then
+    -- premium_until is left as it stands: it is a record of when access
+    -- lapsed, and the admin screen shows it as "Expired <date>".
+    update public.profiles p set is_premium = false where p.id = target;
+
+  elsif cur_premium and cur_until is null then
+    -- Already unlimited. Stamping an expiry here would silently downgrade a
+    -- lifetime account into a fixed term.
+    update public.profiles p set is_premium = true where p.id = target;
+
+  else
+    -- Extend only from time the account still actually holds. A period that
+    -- was revoked, or that has already elapsed, must not be carried forward:
+    -- granting one month after a revoke has to mean one month from today.
+    base := case
+              when cur_premium and cur_until is not null and cur_until > now()
+                then cur_until
+              else now()
+            end;
+
+    update public.profiles p
+      set is_premium = true,
+          premium_until = base + make_interval(months => months)
+      where p.id = target;
+  end if;
+
+  return query
+    select p.email, p.is_premium, p.premium_until
+    from public.profiles p where p.id = target;
+end $$;
+
+revoke all on function public.grant_premium(text, int) from public;
+grant execute on function public.grant_premium(text, int) to authenticated;

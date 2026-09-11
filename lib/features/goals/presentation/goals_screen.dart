@@ -19,6 +19,8 @@ import '../providers/goal_provider.dart';
 import '../data/goal_repository.dart';
 import 'widgets/create_edit_goal_sheet.dart';
 import 'widgets/goal_template_sheet.dart';
+import '../../../core/layout/adaptive_page.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -32,7 +34,7 @@ class GoalsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: SafeArea(
+      body: AdaptivePage(child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -88,7 +90,7 @@ class GoalsScreen extends ConsumerWidget {
             ),
           ],
         ),
-      ),
+      )),
       floatingActionButton: Container(
         decoration: BoxDecoration(
           gradient: const LinearGradient(
@@ -126,7 +128,7 @@ class GoalsScreen extends ConsumerWidget {
   Future<void> _openCreate(BuildContext context, WidgetRef ref) async {
     if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
     if (!context.mounted) return;
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -146,7 +148,7 @@ class GoalsScreen extends ConsumerWidget {
 
   void _showOptions(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    showModalBottomSheet(
+    showAdaptiveSheet(
       context: context,
       backgroundColor: cs.surface,
       shape: const RoundedRectangleBorder(

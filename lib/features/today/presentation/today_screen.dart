@@ -11,6 +11,7 @@ import '../../analytics/providers/activity_provider.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../tasks/providers/task_provider.dart';
 import '../providers/today_provider.dart';
+import '../../../core/layout/adaptive_page.dart';
 
 class TodayScreen extends ConsumerWidget {
   const TodayScreen({super.key});
@@ -30,7 +31,7 @@ class TodayScreen extends ConsumerWidget {
         backgroundColor: cs.background,
         elevation: 0,
       ),
-      body: RefreshIndicator(
+      body: AdaptivePage(child: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(todayTasksGroupedProvider);
           bumpActivityTick(ref);
@@ -130,7 +131,7 @@ class TodayScreen extends ConsumerWidget {
             );
           },
         ),
-      ),
+      )),
     );
   }
 
@@ -290,7 +291,8 @@ class _TodayTaskTile extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         '${taskCtx.goal?.emoji ?? ''} ${taskCtx.goal?.name ?? 'Unlinked'} · ${taskCtx.milestone?.title ?? ''}',
-                        style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                        style:
+                            tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),

@@ -12,12 +12,17 @@ class DashboardHeader extends StatelessWidget {
     required this.date,
     required this.onNewGoal,
     required this.onGenerateWithAi,
+    this.trailing,
   });
 
   final String greeting;
   final String date;
   final VoidCallback onNewGoal;
   final VoidCallback onGenerateWithAi;
+
+  /// Rendered after the actions. Used for the account button, which is a
+  /// status indicator rather than an action and so is kept out of this widget.
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -60,6 +65,10 @@ class DashboardHeader extends StatelessWidget {
             colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
           ),
         ),
+        if (trailing != null) ...[
+          const SizedBox(width: 6),
+          trailing!,
+        ],
       ],
     );
   }

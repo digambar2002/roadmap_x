@@ -51,7 +51,8 @@ ${topGoals.isEmpty ? '- None' : topGoals.join('\n')}
     }
 
     await goal.milestones.load();
-    final milestones = goal.milestones.toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final milestones = goal.milestones.toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
 
     final rows = <String>[];
     int total = 0;
@@ -59,7 +60,8 @@ ${topGoals.isEmpty ? '- None' : topGoals.join('\n')}
 
     for (final m in milestones) {
       await m.tasks.load();
-      final tasks = m.tasks.toList()..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+      final tasks = m.tasks.toList()
+        ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
       final completed = tasks.where((t) => t.isCompleted).length;
       total += tasks.length;
       done += completed;

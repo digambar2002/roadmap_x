@@ -26,7 +26,8 @@ class CoachCacheRepository {
       quickWin: (json['quick_win'] ?? '').toString(),
       risk: (json['risk'] ?? '').toString(),
       coachTip: (json['coach_tip'] ?? '').toString(),
-      generatedAt: DateTime.tryParse((json['generated_at'] ?? '').toString()) ?? DateTime.now(),
+      generatedAt: DateTime.tryParse((json['generated_at'] ?? '').toString()) ??
+          DateTime.now(),
     );
   }
 
@@ -42,11 +43,19 @@ class CoachCacheRepository {
     final json = jsonDecode(raw) as Map<String, dynamic>;
     return WeeklyCoachReview(
       summary: (json['summary'] ?? '').toString(),
-      wins: ((json['wins'] as List?) ?? const []).map((e) => e.toString()).toList(),
-      blockers: ((json['blockers'] as List?) ?? const []).map((e) => e.toString()).toList(),
-      nextWeekFocus: ((json['next_week_focus'] as List?) ?? const []).map((e) => e.toString()).toList(),
-      consistencyScore: ((json['consistency_score'] as num?)?.toInt() ?? 0).clamp(0, 100),
-      generatedAt: DateTime.tryParse((json['generated_at'] ?? '').toString()) ?? DateTime.now(),
+      wins: ((json['wins'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      blockers: ((json['blockers'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      nextWeekFocus: ((json['next_week_focus'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      consistencyScore:
+          ((json['consistency_score'] as num?)?.toInt() ?? 0).clamp(0, 100),
+      generatedAt: DateTime.tryParse((json['generated_at'] ?? '').toString()) ??
+          DateTime.now(),
     );
   }
 

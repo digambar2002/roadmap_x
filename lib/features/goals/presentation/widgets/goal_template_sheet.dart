@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/services/goal_template_service.dart';
+import '../../../../core/layout/adaptive_sheet.dart';
 
 Future<int?> showGoalTemplateSheet(BuildContext context) {
-  return showModalBottomSheet<int>(
+  return showAdaptiveSheet<int>(
     context: context,
     isScrollControlled: true,
     builder: (_) => const _GoalTemplateSheet(),
@@ -32,7 +33,8 @@ class _GoalTemplateSheet extends StatelessWidget {
                 title: Text('${template.emoji} ${template.name}'),
                 subtitle: Text(template.description),
                 onTap: () async {
-                  final id = await GoalTemplateService.instance.createFromTemplate(
+                  final id =
+                      await GoalTemplateService.instance.createFromTemplate(
                     template: template,
                     colorHex: const Color(0xFF5B9CF6).value,
                     targetDate: DateTime.now().add(const Duration(days: 90)),

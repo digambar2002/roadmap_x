@@ -26,6 +26,7 @@ void main() {
         MilestoneSchema,
         TaskSchema,
         ScheduleItemSchema,
+        HabitSchema,
         HabitCheckinSchema,
         ScheduleCompletionSchema,
         AppSettingSchema,
@@ -159,28 +160,45 @@ void main() {
     expect((await goalByUid('g1'))?.name, 'Restored');
   });
 
-  test('two devices ticking different habit boxes both survive', () async {
-    // Device A ticked box 0 this morning.
+  Map<String, dynamic> habitPayload(String uid, String label, int order) => {
+        'uid': uid,
+        'label': label,
+        'iconKey': 'check',
+        'sortOrder': order,
+        'createdAt': DateTime(2026, 1, 1).toIso8601String(),
+        'updatedAt': DateTime(2026, 1, 1).toIso8601String(),
+      };
+
+  test('two devices ticking different habits both survive', () async {
+    await merge({
+      'version': 3,
+      'habits': [
+        habitPayload('h-run', 'Run', 0),
+        habitPayload('h-read', 'Read', 1),
+      ],
+    });
+
+    // Device A ticked "Run" this morning.
     await merge({
       'version': 3,
       'habitCheckins': [
         {
-          'uid': '2026-09-11#0',
+          'uid': '2026-09-11#h-run',
           'dayKey': '2026-09-11',
-          'checkIndex': 0,
+          'habitUid': 'h-run',
           'isChecked': true,
           'updatedAt': DateTime(2026, 9, 11, 8).toIso8601String(),
         },
       ],
     });
-    // Device B ticked box 2, without ever seeing A's write.
+    // Device B ticked "Read", without ever seeing A's write.
     await merge({
       'version': 3,
       'habitCheckins': [
         {
-          'uid': '2026-09-11#2',
+          'uid': '2026-09-11#h-read',
           'dayKey': '2026-09-11',
-          'checkIndex': 2,
+          'habitUid': 'h-read',
           'isChecked': true,
           'updatedAt': DateTime(2026, 9, 11, 9).toIso8601String(),
         },
@@ -193,10 +211,58 @@ void main() {
         .isCheckedEqualTo(true)
         .findAll();
 
-    expect(ticked.map((row) => row.checkIndex).toSet(), {0, 2});
+    expect(ticked.map((row) => row.habitUid).toSet(), {'h-run', 'h-read'});
   });
 
-  test('a v2 preferences blob is lifted into habit rows', () async {
+  test('a renamed habit keeps its history', () async {
+    await merge({'version': 3, 'habits': [habitPayload('h1', 'Run', 0)]});
+    await merge({
+      'version': 3,
+      'habitCheckins': [
+        {
+          'uid': '2026-09-10#h1',
+          'dayKey': '2026-09-10',
+          'habitUid': 'h1',
+          'isChecked': true,
+          'updatedAt': DateTime(2026, 9, 10).toIso8601String(),
+        },
+      ],
+    });
+
+    // Renaming is an edit to the habit row, not a new identity — which is the
+    // whole reason check-ins key on uid rather than on position or label.
+    await merge({
+      'version': 3,
+      'habits': [
+        {
+          ...habitPayload('h1', 'Morning run', 0),
+          'updatedAt': DateTime(2026, 9, 12).toIso8601String(),
+        },
+      ],
+    });
+
+    final habit = await isar.habits.filter().uidEqualTo('h1').findFirst();
+    final ticks = await isar.habitCheckins
+        .filter()
+        .habitUidEqualTo('h1')
+        .isCheckedEqualTo(true)
+        .findAll();
+    expect(habit?.label, 'Morning run');
+    expect(ticks.length, 1);
+  });
+
+  test('a v2 preferences blob resolves against the habit order', () async {
+    // The old format stored ticks by slot position, so restoring one has to
+    // map each position onto whichever habit now occupies it.
+    await merge({
+      'version': 3,
+      'habits': [
+        habitPayload('h0', 'First', 0),
+        habitPayload('h1', 'Second', 1),
+        habitPayload('h2', 'Third', 2),
+        habitPayload('h3', 'Fourth', 3),
+      ],
+    });
     await merge({
       'version': 2,
       'preferences': {
@@ -211,7 +277,31 @@ void main() {
         .isCheckedEqualTo(true)
         .findAll();
 
-    expect(ticked.map((row) => row.checkIndex).toSet(), {0, 1, 3});
+    expect(ticked.map((row) => row.habitUid).toSet(), {'h0', 'h1', 'h3'});
+  });
+
+  test('a legacy tick with no habit behind its slot is dropped', () async {
+    // Two habits, but the blob records a tick in slot 3. Attributing it to an
+    // arbitrary habit would invent history that never happened.
+    await merge({
+      'version': 3,
+      'habits': [
+        habitPayload('h0', 'First', 0),
+        habitPayload('h1', 'Second', 1),
+      ],
+    });
+    await merge({
+      'version': 2,
+      'preferences': {'habit_checks_2026-09-09': '[true, false, false, true]'},
+    });
+
+    final ticked = await isar.habitCheckins
+        .filter()
+        .dayKeyEqualTo('2026-09-09')
+        .isCheckedEqualTo(true)
+        .findAll();
+
+    expect(ticked.map((row) => row.habitUid).toSet(), {'h0'});
   });
 
   test('day history is stripped from the restored preferences map', () async {

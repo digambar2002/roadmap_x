@@ -64,7 +64,8 @@ void _watchTaskActivity(Ref ref) {
   ref.watch(goalChangesProvider);
 }
 
-final activeTaskContextsProvider = FutureProvider<List<TodayTaskContext>>((ref) {
+final activeTaskContextsProvider =
+    FutureProvider<List<TodayTaskContext>>((ref) {
   _watchTaskActivity(ref);
   return ref.watch(taskRepositoryProvider).getActiveTaskContexts();
 });

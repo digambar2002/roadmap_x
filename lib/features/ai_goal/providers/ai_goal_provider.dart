@@ -158,7 +158,8 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
           theme: milestone.theme,
         );
 
-        final orderedTasks = [...milestone.tasks]..sort((a, b) => a.order.compareTo(b.order));
+        final orderedTasks = [...milestone.tasks]
+          ..sort((a, b) => a.order.compareTo(b.order));
         for (final task in orderedTasks) {
           await taskRepo.create(
             milestoneId: savedMilestone.id,
@@ -229,6 +230,7 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
   }
 }
 
-final aiGoalGeneratorProvider = NotifierProvider<AiGoalGenerator, AiGoalGeneratorState>(
+final aiGoalGeneratorProvider =
+    NotifierProvider<AiGoalGenerator, AiGoalGeneratorState>(
   AiGoalGenerator.new,
 );

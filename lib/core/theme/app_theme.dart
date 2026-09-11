@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+
+import '../layout/breakpoints.dart';
 import 'colors.dart';
 
 class AppTheme {
@@ -7,6 +9,18 @@ class AppTheme {
 
   static ThemeData get dark => _buildTheme(Brightness.dark);
   static ThemeData get light => _buildTheme(Brightness.light);
+
+  /// Desktop trims a little off every size.
+  ///
+  /// Type and control metrics in this app were picked for a fingertip at arm's
+  /// length. On a monitor, at half the viewing distance and with a cursor that
+  /// can hit a 24px target, the same numbers read as oversized — which is most
+  /// of what makes a ported phone app feel like one. This is a platform test,
+  /// not a width test: it follows the input device, so a narrow window on a Mac
+  /// still gets desktop metrics.
+  static bool get _dense => isPointerPlatform;
+
+  static const double _denseFontFactor = 0.94;
 
   static ThemeData _buildTheme(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
@@ -38,7 +52,7 @@ class AppTheme {
       outlineVariant: border.withOpacity(0.5),
     );
 
-    final textTheme = GoogleFonts.outfitTextTheme(
+    final baseTextTheme = GoogleFonts.outfitTextTheme(
       TextTheme(
         displayLarge: TextStyle(color: textPrimary),
         displayMedium: TextStyle(color: textPrimary),
@@ -58,12 +72,17 @@ class AppTheme {
       ),
     );
 
+    final textTheme = baseTextTheme;
+
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: bg,
       textTheme: textTheme,
+      // Tightens the built-in Material components (list tiles, buttons,
+      // chips) the same way, so spacing stays consistent with the type.
+      visualDensity: VisualDensity.adaptivePlatformDensity,
 
       // Card theme
       cardTheme: CardThemeData(
@@ -83,10 +102,11 @@ class AppTheme {
         elevation: 0,
         scrolledUnderElevation: 0,
         titleTextStyle: GoogleFonts.outfit(
-          fontSize: 18,
+          fontSize: _dense ? 16 : 18,
           fontWeight: FontWeight.w600,
           color: textPrimary,
         ),
+        toolbarHeight: _dense ? 52 : null,
       ),
 
       // Input decoration
@@ -109,8 +129,10 @@ class AppTheme {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: AppColors.error),
         ),
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: _dense ? 14 : 16,
+          vertical: _dense ? 11 : 14,
+        ),
         hintStyle: TextStyle(color: textMuted),
         labelStyle: TextStyle(color: textMuted),
       ),
@@ -121,11 +143,14 @@ class AppTheme {
           backgroundColor: AppColors.accent,
           foregroundColor: Colors.white,
           elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          padding: EdgeInsets.symmetric(
+            horizontal: _dense ? 20 : 24,
+            vertical: _dense ? 11 : 14,
+          ),
           shape:
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           textStyle: GoogleFonts.outfit(
-            fontSize: 15,
+            fontSize: _dense ? 14 : 15,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -147,9 +172,15 @@ class AppTheme {
         backgroundColor: card,
         selectedColor: AppColors.accent.withOpacity(0.2),
         side: BorderSide(color: border),
-        labelStyle: GoogleFonts.outfit(fontSize: 13, color: textPrimary),
+        labelStyle: GoogleFonts.outfit(
+          fontSize: _dense ? 12 : 13,
+          color: textPrimary,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: _dense ? 8 : 10,
+          vertical: _dense ? 4 : 6,
+        ),
       ),
 
       // BottomSheet theme
@@ -181,6 +212,21 @@ class AppTheme {
       // Icon theme
       iconTheme: IconThemeData(color: textMuted),
       primaryIconTheme: const IconThemeData(color: AppColors.accent),
+    );
+  }
+
+  /// Applies the desktop type scale to a theme taken from *inside* MaterialApp.
+  ///
+  /// It has to be done there, not in [_buildTheme]. Typography keeps colour and
+  /// geometry in separate text themes and only merges the sizes in when the
+  /// theme is localized in the widget tree, so `ThemeData.textTheme` still has
+  /// null fontSizes — and `TextStyle.apply(fontSizeFactor:)` asserts on those.
+  ///
+  /// Returns [theme] untouched on touch platforms.
+  static ThemeData densifyForPointer(ThemeData theme) {
+    if (!_dense) return theme;
+    return theme.copyWith(
+      textTheme: theme.textTheme.apply(fontSizeFactor: _denseFontFactor),
     );
   }
 }

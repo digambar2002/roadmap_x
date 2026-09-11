@@ -10,6 +10,7 @@ import 'core/router/app_router.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/notification_service.dart';
 import 'core/services/local_changes.dart';
+import 'core/services/onboarding.dart';
 import 'core/services/shared_preferences_provider.dart';
 import 'core/services/synced_settings.dart';
 import 'core/sync/account_service.dart';
@@ -18,7 +19,7 @@ import 'core/theme/app_theme.dart';
 import 'features/analytics/providers/activity_provider.dart';
 import 'features/schedule/data/schedule_repository.dart';
 import 'features/schedule/providers/schedule_provider.dart';
-import 'features/settings/providers/habit_checkin_provider.dart';
+import 'features/habits/providers/habit_provider.dart';
 import 'features/tasks/data/task_repository.dart';
 import 'features/settings/providers/settings_provider.dart';
 import 'shared/widgets/restore_backup_gate.dart';
@@ -45,6 +46,9 @@ Future<void> main() async {
   // schedule history out of SharedPreferences into real rows.
   await DbMigration.instance.run(prefs);
   await SyncedSettings.instance.captureExisting(prefs);
+  // Upgrading users already have data; the welcome question is only for a
+  // genuinely empty first run.
+  await Onboarding.skipForExistingUsers(prefs);
 
   // Both are no-ops without SUPABASE_* dart-defines, and for accounts that
   // have not been activated. The app is fully usable either way.
@@ -181,8 +185,13 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
         darkTheme: AppTheme.dark,
         themeMode: themeMode,
         routerConfig: router,
-        builder: (context, child) => RestoreBackupGate(
-          child: child ?? const SizedBox.shrink(),
+        builder: (context, child) => Theme(
+          // Inside MaterialApp the theme is localized, so its text styles have
+          // real sizes and the desktop scale can be applied to them.
+          data: AppTheme.densifyForPointer(Theme.of(context)),
+          child: RestoreBackupGate(
+            child: child ?? const SizedBox.shrink(),
+          ),
         ),
       );
   }

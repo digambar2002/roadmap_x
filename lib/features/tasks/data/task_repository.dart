@@ -30,22 +30,16 @@ class TaskRepository {
       .build()
       .findAll();
 
-  Future<List<Task>> getAllCompleted() => _db.tasks
-      .filter()
-      .deletedAtIsNull()
-      .isCompletedEqualTo(true)
-      .findAll();
+  Future<List<Task>> getAllCompleted() =>
+      _db.tasks.filter().deletedAtIsNull().isCompletedEqualTo(true).findAll();
 
   Future<Task?> getById(int id) async {
     final task = await _db.tasks.get(id);
     return task?.deletedAt == null ? task : null;
   }
 
-  Stream<List<Task>> watchAllTasks() => _db.tasks
-      .filter()
-      .deletedAtIsNull()
-      .build()
-      .watch(fireImmediately: true);
+  Stream<List<Task>> watchAllTasks() =>
+      _db.tasks.filter().deletedAtIsNull().build().watch(fireImmediately: true);
 
   /// Fires whenever any task changes; used to invalidate derived providers.
   Stream<void> watchTaskActivity() =>
@@ -75,7 +69,10 @@ class TaskRepository {
         .findAll()
       ..sort(_compareUrgency);
     final contexts = await _toContexts(tasks);
-    return contexts.where((ctx) => ctx.goal?.id == goal.id).take(limit).toList();
+    return contexts
+        .where((ctx) => ctx.goal?.id == goal.id)
+        .take(limit)
+        .toList();
   }
 
   Future<List<Task>> getAll() =>

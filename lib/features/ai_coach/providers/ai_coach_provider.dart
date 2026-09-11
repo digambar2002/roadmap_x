@@ -175,7 +175,8 @@ class AdjustPlanNotifier extends FamilyAsyncNotifier<PlanAdjustment?, int> {
     final service = ref.read(aiCoachServiceProvider);
     if (service == null) {
       state = AsyncError(
-        const AiCoachException('AI Coach is unavailable. Add API key in Settings.'),
+        const AiCoachException(
+            'AI Coach is unavailable. Add API key in Settings.'),
         StackTrace.current,
       );
       return;

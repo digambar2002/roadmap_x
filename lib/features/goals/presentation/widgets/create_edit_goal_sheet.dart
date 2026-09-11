@@ -198,7 +198,8 @@ class _PrioritySelector extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
               onTap: () => onSelected(value),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(

@@ -34,12 +34,8 @@ class GoalRepository {
       .map((goal) => goal?.deletedAt == null ? goal : null);
 
   // ── Reads ─────────────────────────────────────────────────
-  Future<List<Goal>> getAll() => _db.goals
-      .filter()
-      .deletedAtIsNull()
-      .sortBySortOrder()
-      .build()
-      .findAll();
+  Future<List<Goal>> getAll() =>
+      _db.goals.filter().deletedAtIsNull().sortBySortOrder().build().findAll();
 
   Future<Goal?> getById(int id) async {
     final goal = await _db.goals.get(id);
@@ -77,11 +73,8 @@ class GoalRepository {
       .watch(fireImmediately: true)
       .map((goals) => goals.length);
 
-  Future<int> activeCount() => _db.goals
-      .filter()
-      .deletedAtIsNull()
-      .isArchivedEqualTo(false)
-      .count();
+  Future<int> activeCount() =>
+      _db.goals.filter().deletedAtIsNull().isArchivedEqualTo(false).count();
 
   // ── Writes ────────────────────────────────────────────────
   Future<Goal> create({

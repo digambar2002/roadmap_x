@@ -8,12 +8,12 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/ai/gemini_service.dart';
 import '../../settings/providers/ai_settings_provider.dart';
 import '../providers/ai_goal_provider.dart';
+import '../../../core/layout/adaptive_sheet.dart';
 
 Future<int?> showAiGoalSheet(BuildContext context) {
-  return showModalBottomSheet<int>(
+  return showAdaptiveSheet<int>(
     context: context,
     isScrollControlled: true,
-    useSafeArea: true,
     backgroundColor: Theme.of(context).colorScheme.surface,
     builder: (_) => const AiGoalSheet(),
   );
@@ -62,7 +62,9 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
     final state = ref.read(aiGoalGeneratorProvider);
     _promptController.text = state.prompt;
     _promptController.addListener(() {
-      ref.read(aiGoalGeneratorProvider.notifier).setPrompt(_promptController.text);
+      ref
+          .read(aiGoalGeneratorProvider.notifier)
+          .setPrompt(_promptController.text);
     });
   }
 
@@ -162,7 +164,8 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                                 notifier.toInput();
                                 _stopLoadingTicker();
                                 _promptController.text = state.prompt;
-                                _promptController.selection = TextSelection.collapsed(
+                                _promptController.selection =
+                                    TextSelection.collapsed(
                                   offset: _promptController.text.length,
                                 );
                               },
@@ -177,7 +180,9 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                                 if (!mounted) return;
 
                                 if (goalId == null) {
-                                  final err = ref.read(aiGoalGeneratorProvider).errorMessage ??
+                                  final err = ref
+                                          .read(aiGoalGeneratorProvider)
+                                          .errorMessage ??
                                       'Failed to save goal.';
                                   messenger.showSnackBar(
                                     SnackBar(content: Text(err)),
@@ -195,7 +200,8 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                               onPickSuggestion: (label) {
                                 final prompt = _suggestions[label]!;
                                 _promptController.text = prompt;
-                                _promptController.selection = TextSelection.collapsed(
+                                _promptController.selection =
+                                    TextSelection.collapsed(
                                   offset: prompt.length,
                                 );
                               },
@@ -231,14 +237,20 @@ class _Header extends StatelessWidget {
           child: const Icon(Icons.auto_awesome, color: Colors.white),
         ),
         const SizedBox(width: 8),
-        ShaderMask(
-          shaderCallback: gradient.createShader,
-          child: Text(
-            'AI Goal Generator',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
-                ),
+        // Flexible so a long title ellipsizes instead of overflowing the row
+        // on a narrow phone.
+        Flexible(
+          child: ShaderMask(
+            shaderCallback: gradient.createShader,
+            child: Text(
+              'AI Goal Generator',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+            ),
           ),
         ),
         const Spacer(),
@@ -331,7 +343,8 @@ class _PromptInputView extends ConsumerWidget {
             autofocus: true,
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
-              hintText: 'e.g. I want to learn DSA step by step for placements in 3 months',
+              hintText:
+                  'e.g. I want to learn DSA step by step for placements in 3 months',
               border: OutlineInputBorder(),
             ),
           ),
@@ -389,10 +402,13 @@ class _PromptInputView extends ConsumerWidget {
                           ),
                         ),
                         if (!errorMessage!.contains('No API key'))
-                          TextButton(onPressed: onGenerate, child: const Text('Retry')),
+                          TextButton(
+                              onPressed: onGenerate,
+                              child: const Text('Retry')),
                       ],
                     ),
-                    if (technicalDetails != null && technicalDetails!.trim().isNotEmpty)
+                    if (technicalDetails != null &&
+                        technicalDetails!.trim().isNotEmpty)
                       Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: ExpansionTile(
@@ -415,7 +431,8 @@ class _PromptInputView extends ConsumerWidget {
                               decoration: BoxDecoration(
                                 color: cs.surface,
                                 borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: cs.outline.withOpacity(0.5)),
+                                border: Border.all(
+                                    color: cs.outline.withOpacity(0.5)),
                               ),
                               child: SelectableText(
                                 technicalDetails!,
@@ -474,7 +491,8 @@ class _LoadingView extends StatelessWidget {
         children: [
           ShaderMask(
             shaderCallback: gradient.createShader,
-            child: const Icon(Icons.auto_awesome, size: 56, color: Colors.white),
+            child:
+                const Icon(Icons.auto_awesome, size: 56, color: Colors.white),
           )
               .animate(onPlay: (controller) => controller.repeat())
               .shimmer(duration: 1500.ms, color: const Color(0xFF5B9CF6))
@@ -562,7 +580,8 @@ class _PreviewView extends StatelessWidget {
                     ?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
-            TextButton(onPressed: onEditPrompt, child: const Text('Edit prompt')),
+            TextButton(
+                onPressed: onEditPrompt, child: const Text('Edit prompt')),
           ],
         ),
         const SizedBox(height: 8),
@@ -661,7 +680,8 @@ class _PreviewView extends StatelessWidget {
                           ),
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 12),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -675,7 +695,8 @@ class _PreviewView extends StatelessWidget {
                                   const SizedBox(height: 2),
                                   Text(
                                     '${milestone.tasks.length} tasks',
-                                    style: Theme.of(context).textTheme.bodySmall,
+                                    style:
+                                        Theme.of(context).textTheme.bodySmall,
                                   ),
                                 ],
                               ),
@@ -701,9 +722,11 @@ class _PreviewView extends StatelessWidget {
                                 (task) => Padding(
                                   padding: const EdgeInsets.only(top: 8),
                                   child: Row(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
-                                      const Text('•', style: TextStyle(fontSize: 16)),
+                                      const Text('•',
+                                          style: TextStyle(fontSize: 16)),
                                       const SizedBox(width: 8),
                                       Expanded(child: Text(task.text)),
                                     ],
