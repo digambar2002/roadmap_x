@@ -1,6 +1,7 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import '../../../core/services/backup_service.dart';
+import '../../../core/services/local_changes.dart';
+import '../../../core/services/synced_settings.dart';
 
 // Settings keys
 const _kUserName = 'user_name';
@@ -20,6 +21,14 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
   @override
   Future<SettingsState> build() async {
     _prefs = await SharedPreferences.getInstance();
+
+    // A setting merged in from another device lands in SharedPreferences
+    // behind this notifier's back, so re-read when that happens.
+    final sub = SyncedSettings.instance.changes.listen((_) {
+      ref.invalidateSelf();
+    });
+    ref.onDispose(sub.cancel);
+
     return SettingsState(
       userName: _prefs.getString(_kUserName) ?? 'there',
       themeMode: _prefs.getString(_kThemeMode) ?? 'dark',
@@ -41,8 +50,9 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     final current = state.valueOrNull;
     if (current == null) return;
     await _prefs.setString(_kUserName, name);
+    await SyncedSettings.instance.capture(_prefs, _kUserName);
     state = AsyncData(current.copyWith(userName: name));
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> setThemeMode(String mode) async {
@@ -50,7 +60,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     if (current == null) return;
     await _prefs.setString(_kThemeMode, mode);
     state = AsyncData(current.copyWith(themeMode: mode));
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> setDailyReminderEnabled(bool enabled) async {
@@ -58,7 +68,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     if (current == null) return;
     await _prefs.setBool(_kDailyReminderEnabled, enabled);
     state = AsyncData(current.copyWith(dailyReminderEnabled: enabled));
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> setDailyReminderTime(int hour, int minute) async {
@@ -72,7 +82,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
         dailyReminderMinute: minute,
       ),
     );
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> setTaskDueNotificationsEnabled(bool enabled) async {
@@ -82,7 +92,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     state = AsyncData(
       current.copyWith(taskDueNotificationsEnabled: enabled),
     );
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> setNonNegotiable(int index, String label) async {
@@ -95,10 +105,11 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
       _kNonNeg3Label
     ];
     await _prefs.setString(keys[index], label);
+    await SyncedSettings.instance.capture(_prefs, keys[index]);
     final updated = List<String>.from(current.nonNegotiables);
     updated[index] = label;
     state = AsyncData(current.copyWith(nonNegotiables: updated));
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 }
 

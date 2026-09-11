@@ -26,6 +26,8 @@ import '../../tasks/data/task_repository.dart';
 import '../../tasks/providers/task_provider.dart';
 import 'widgets/create_edit_milestone_sheet.dart';
 import 'widgets/create_edit_task_sheet.dart';
+import '../../premium/presentation/premium_gate.dart';
+import '../../premium/providers/premium_provider.dart';
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
   final int goalId;
@@ -101,7 +103,11 @@ class _GoalDetailBody extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final goalColor = Color(goal.colorHex);
-    final hasAiCoach = ref.watch(hasAiCoachProvider);
+    // Both must hold: the user supplied a Gemini key *and* the account is
+    // activated. The coach is a paid feature even though the API cost is
+    // theirs.
+    final hasAiCoach =
+        ref.watch(hasAiCoachProvider) && ref.watch(isPremiumProvider);
 
     return Scaffold(
       backgroundColor: cs.background,
@@ -178,7 +184,11 @@ class _GoalDetailBody extends ConsumerWidget {
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: GoalCoachSection(goalId: goal.id),
+                  child: PremiumLock(
+                    title: 'AI coach',
+                    message: 'Guidance on this goal — part of Premium.',
+                    child: GoalCoachSection(goalId: goal.id),
+                  ),
                 ),
               ),
 

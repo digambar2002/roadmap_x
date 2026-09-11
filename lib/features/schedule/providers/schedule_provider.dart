@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/schedule_completion_service.dart';
 import '../data/schedule_repository.dart';
+import '../../../core/sync/sync_service.dart';
 
 final scheduleRepositoryProvider = Provider<ScheduleRepository>(
   (_) => ScheduleRepository.instance,
@@ -28,5 +29,9 @@ final selectedScheduleDateProvider = StateProvider<DateTime>((_) {
 
 final scheduleCompletedUidsProvider =
     FutureProvider.family<Set<String>, DateTime>((ref, date) {
+  // Completions merged in from another device land in the database directly,
+  // so this cache has to be told to re-read.
+  final sub = SyncService.instance.merged.listen((_) => ref.invalidateSelf());
+  ref.onDispose(sub.cancel);
   return ScheduleCompletionService.instance.getCompletedForDate(date);
 });

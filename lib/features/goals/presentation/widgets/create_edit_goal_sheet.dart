@@ -28,6 +28,7 @@ class CreateEditGoalSheet extends HookConsumerWidget {
     final colorHex = useState(goal?.colorHex ?? AppColors.goalColorHexes.first);
     final targetDate = useState(
         goal?.targetDate ?? DateTime.now().add(const Duration(days: 90)));
+    final priority = useState(GoalPriority.clamp(goal?.priority));
     final isSaving = useState(false);
     final formKey = useMemoized(GlobalKey<FormState>.new);
 
@@ -41,7 +42,8 @@ class CreateEditGoalSheet extends HookConsumerWidget {
             ..description = descCtrl.text.trim()
             ..emoji = emoji.value
             ..colorHex = colorHex.value
-            ..targetDate = targetDate.value;
+            ..targetDate = targetDate.value
+            ..priority = priority.value;
           await GoalRepository.instance.update(goal!);
         } else {
           await GoalRepository.instance.create(
@@ -50,6 +52,7 @@ class CreateEditGoalSheet extends HookConsumerWidget {
             emoji: emoji.value,
             colorHex: colorHex.value,
             targetDate: targetDate.value,
+            priority: priority.value,
           );
         }
         if (context.mounted) Navigator.of(context).pop();
@@ -125,6 +128,17 @@ class CreateEditGoalSheet extends HookConsumerWidget {
               ),
               const SizedBox(height: 20),
 
+              // ── Priority ──────────────────────────────────
+              _Section(
+                label: 'Priority',
+                child: _PrioritySelector(
+                  selected: priority.value,
+                  accent: Color(colorHex.value),
+                  onSelected: (value) => priority.value = value,
+                ),
+              ),
+              const SizedBox(height: 20),
+
               // ── Target date ───────────────────────────────
               _DatePickerField(
                 label: 'Target Date',
@@ -144,6 +158,92 @@ class CreateEditGoalSheet extends HookConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Three-way priority picker.
+///
+/// Shown as full-width rows rather than a compact chip group because the
+/// difference between the levels is the *consequence* — whether the goal leads
+/// the dashboard or stays off it — and that needs a sentence to convey.
+class _PrioritySelector extends StatelessWidget {
+  const _PrioritySelector({
+    required this.selected,
+    required this.accent,
+    required this.onSelected,
+  });
+
+  final int selected;
+  final Color accent;
+  final ValueChanged<int> onSelected;
+
+  static IconData _icon(int value) => switch (value) {
+        GoalPriority.focus => Icons.bolt_rounded,
+        GoalPriority.someday => Icons.bedtime_outlined,
+        _ => Icons.trending_up_rounded,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    return Column(
+      children: [
+        for (final value in GoalPriority.all)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(12),
+              onTap: () => onSelected(value),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: value == selected ? accent : cs.outline,
+                    width: value == selected ? 2 : 1,
+                  ),
+                  color: value == selected
+                      ? accent.withValues(alpha: 0.08)
+                      : Colors.transparent,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _icon(value),
+                      size: 20,
+                      color: value == selected ? accent : cs.onSurfaceVariant,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            GoalPriority.label(value),
+                            style: tt.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            GoalPriority.description(value),
+                            style: tt.bodySmall?.copyWith(
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (value == selected)
+                      Icon(Icons.check_circle_rounded, size: 18, color: accent),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

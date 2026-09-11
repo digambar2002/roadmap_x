@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  app_links
   file_saver
   flutter_secure_storage_windows
   flutter_timezone

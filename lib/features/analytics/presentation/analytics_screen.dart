@@ -8,6 +8,7 @@ import '../../../shared/widgets/progress_ring.dart';
 import '../../ai_coach/presentation/ai_weekly_review_section.dart';
 import '../providers/activity_provider.dart';
 import '../providers/analytics_provider.dart';
+import '../../premium/presentation/premium_gate.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -42,7 +43,12 @@ class AnalyticsScreen extends ConsumerWidget {
 
                 const SizedBox(height: 20),
 
-                AiWeeklyReviewSection(data: data)
+                PremiumLock(
+                  title: 'Weekly AI review',
+                  message: 'Wins, blockers and next week\'s focus — '
+                      'part of Premium.',
+                  child: AiWeeklyReviewSection(data: data),
+                )
                     .animate()
                     .fadeIn(delay: 60.ms)
                     .slideY(begin: 0.05),

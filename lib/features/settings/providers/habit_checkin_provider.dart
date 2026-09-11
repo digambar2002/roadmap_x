@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../analytics/providers/activity_provider.dart';
 import '../../../core/services/habit_checkin_service.dart';
+import '../../../core/sync/sync_service.dart';
 
 final habitCheckinServiceProvider = Provider<HabitCheckinService>(
   (_) => HabitCheckinService.instance,
@@ -12,6 +13,14 @@ class TodayHabitChecksNotifier extends AsyncNotifier<List<bool>> {
 
   @override
   Future<List<bool>> build() async {
+    // A merge from another device writes check-ins straight into the database,
+    // bypassing the tick bumped by [toggle].
+    final sub = SyncService.instance.merged.listen((_) {
+      ref.read(habitActivityTickProvider.notifier).state++;
+      ref.invalidateSelf();
+    });
+    ref.onDispose(sub.cancel);
+
     final now = DateTime.now();
     _builtForDay = DateTime(now.year, now.month, now.day);
     return ref.read(habitCheckinServiceProvider).getChecksForDate(now);

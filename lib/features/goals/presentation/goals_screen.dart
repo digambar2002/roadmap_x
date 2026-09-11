@@ -8,6 +8,7 @@ import '../../../core/models/models.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/progress_utils.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../premium/presentation/premium_gate.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
@@ -120,7 +121,11 @@ class GoalsScreen extends ConsumerWidget {
     );
   }
 
-  void _openCreate(BuildContext context, WidgetRef ref) {
+  /// All manual-creation paths funnel through here, so the free-tier goal
+  /// cap only needs checking in one place.
+  Future<void> _openCreate(BuildContext context, WidgetRef ref) async {
+    if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+    if (!context.mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -164,8 +169,12 @@ class GoalsScreen extends ConsumerWidget {
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
               subtitle: const Text('Describe your goal, AI builds the plan'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
+                // Passing the AI gate implies premium, which carries
+                // unlimited goals — no separate cap check needed here.
+                if (!await PremiumGate.ensureAi(context, ref)) return;
+                if (!context.mounted) return;
                 _openAi(context);
               },
             ),
@@ -177,6 +186,8 @@ class GoalsScreen extends ConsumerWidget {
               subtitle: const Text('Create from proven goal structure'),
               onTap: () async {
                 Navigator.pop(context);
+                if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+                if (!context.mounted) return;
                 final goalId = await showGoalTemplateSheet(context);
                 if (goalId != null && context.mounted) {
                   context.go('/goals/$goalId');
@@ -201,6 +212,47 @@ class GoalsScreen extends ConsumerWidget {
   }
 }
 
+/// Small marker for a goal that has been deliberately promoted or parked.
+class _PriorityBadge extends StatelessWidget {
+  const _PriorityBadge({required this.priority});
+
+  final int priority;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final isFocus = priority == GoalPriority.focus;
+    final color = isFocus ? const Color(0xFFF59E0B) : cs.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(6),
+        color: color.withValues(alpha: 0.14),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            isFocus ? Icons.bolt_rounded : Icons.bedtime_outlined,
+            size: 11,
+            color: color,
+          ),
+          const SizedBox(width: 3),
+          Text(
+            GoalPriority.label(priority),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 // ── Filter chips ──────────────────────────────────────────
 
 class _FilterChips extends StatelessWidget {
@@ -211,8 +263,13 @@ class _FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const filters = ['active', 'all', 'archived'];
-    const labels = {'active': 'Active', 'all': 'All', 'archived': 'Archived'};
+    const filters = ['active', 'focus', 'all', 'archived'];
+    const labels = {
+      'active': 'Active',
+      'focus': 'Focus',
+      'all': 'All',
+      'archived': 'Archived',
+    };
 
     return SizedBox(
       height: 48,
@@ -282,6 +339,11 @@ class _GoalCard extends ConsumerWidget {
     final tt = Theme.of(context).textTheme;
     final goalColor = Color(goal.colorHex);
     final milestonesAsync = ref.watch(milestonesForGoalProvider(goal.id));
+    // Active is the default and needs no badge; only the two deliberate
+    // choices are worth the visual weight.
+    final priorityBadge = goal.priority == GoalPriority.active
+        ? null
+        : _PriorityBadge(priority: goal.priority);
     final progress = milestonesAsync.when(
       loading: () => const _Progress(0, 0, 0),
       error: (_, __) => const _Progress(0, 0, 0),
@@ -372,11 +434,23 @@ class _GoalCard extends ConsumerWidget {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  goal.name,
-                                  style: tt.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                Row(
+                                  children: [
+                                    Flexible(
+                                      child: Text(
+                                        goal.name,
+                                        style: tt.titleMedium?.copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                    if (priorityBadge != null) ...[
+                                      const SizedBox(width: 8),
+                                      priorityBadge,
+                                    ],
+                                  ],
                                 ),
                                 if (goal.description.isNotEmpty)
                                   Text(

@@ -2,7 +2,7 @@ import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
-import '../../../core/services/backup_service.dart';
+import '../../../core/services/local_changes.dart';
 import '../../../core/models/today_task.dart';
 
 class TaskRepository {
@@ -15,6 +15,7 @@ class TaskRepository {
   // ── Streams ──────────────────────────────────────────────
   Stream<List<Task>> watchForMilestone(int milestoneId) => _db.tasks
       .filter()
+      .deletedAtIsNull()
       .milestone((q) => q.idEqualTo(milestoneId))
       .sortBySortOrder()
       .build()
@@ -23,17 +24,28 @@ class TaskRepository {
   // ── Reads ─────────────────────────────────────────────────
   Future<List<Task>> getForMilestone(int milestoneId) => _db.tasks
       .filter()
+      .deletedAtIsNull()
       .milestone((q) => q.idEqualTo(milestoneId))
       .sortBySortOrder()
       .build()
       .findAll();
 
-  Future<List<Task>> getAllCompleted() =>
-      _db.tasks.filter().isCompletedEqualTo(true).findAll();
+  Future<List<Task>> getAllCompleted() => _db.tasks
+      .filter()
+      .deletedAtIsNull()
+      .isCompletedEqualTo(true)
+      .findAll();
 
-  Future<Task?> getById(int id) => _db.tasks.get(id);
-  Stream<List<Task>> watchAllTasks() =>
-      _db.tasks.where().build().watch(fireImmediately: true);
+  Future<Task?> getById(int id) async {
+    final task = await _db.tasks.get(id);
+    return task?.deletedAt == null ? task : null;
+  }
+
+  Stream<List<Task>> watchAllTasks() => _db.tasks
+      .filter()
+      .deletedAtIsNull()
+      .build()
+      .watch(fireImmediately: true);
 
   /// Fires whenever any task changes; used to invalidate derived providers.
   Stream<void> watchTaskActivity() =>
@@ -49,11 +61,16 @@ class TaskRepository {
     int limit = 3,
   }) async {
     if (goalUid.isEmpty) return [];
-    final goal = await _db.goals.filter().uidEqualTo(goalUid).findFirst();
+    final goal = await _db.goals
+        .filter()
+        .uidEqualTo(goalUid)
+        .deletedAtIsNull()
+        .findFirst();
     if (goal == null) return [];
 
     final tasks = await _db.tasks
         .filter()
+        .deletedAtIsNull()
         .isCompletedEqualTo(false)
         .findAll()
       ..sort(_compareUrgency);
@@ -61,11 +78,13 @@ class TaskRepository {
     return contexts.where((ctx) => ctx.goal?.id == goal.id).take(limit).toList();
   }
 
-  Future<List<Task>> getAll() => _db.tasks.where().build().findAll();
+  Future<List<Task>> getAll() =>
+      _db.tasks.filter().deletedAtIsNull().build().findAll();
 
   Future<List<TodayTaskContext>> getActiveTaskContexts() async {
     final tasks = await _db.tasks
         .filter()
+        .deletedAtIsNull()
         .isCompletedEqualTo(false)
         .findAll()
       ..sort(_compareByDueDate);
@@ -76,6 +95,7 @@ class TaskRepository {
   Future<List<TodayTaskContext>> getFocusTasks(int goalId) async {
     final tasks = await _db.tasks
         .filter()
+        .deletedAtIsNull()
         .isCompletedEqualTo(false)
         .findAll()
       ..sort(_compareUrgency);
@@ -125,6 +145,7 @@ class TaskRepository {
     final ms = await _db.milestones.get(milestoneId);
     if (ms == null) throw Exception('Milestone not found: $milestoneId');
 
+    final now = DateTime.now();
     final task = Task()
       ..uid = _uuid.v4()
       ..text = text
@@ -132,48 +153,62 @@ class TaskRepository {
       ..dueDate = dueDate
       ..priority = priority
       ..note = note
-      ..createdAt = DateTime.now()
+      ..createdAt = now
       ..completedAt = null
-      ..sortOrder = await _nextSortOrder(milestoneId);
+      ..sortOrder = await _nextSortOrder(milestoneId)
+      // Kept alongside the link so the row is self-describing on the wire.
+      ..milestoneUid = ms.uid
+      ..updatedAt = now;
     task.milestone.value = ms;
 
     await _db.writeTxn(() async {
       await _db.tasks.put(task);
       await task.milestone.save();
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
     return task;
   }
 
   Future<void> update(Task task) async {
+    task.updatedAt = DateTime.now();
     await _db.writeTxn(() async {
       await _db.tasks.put(task);
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> toggleComplete(int id) async {
-    final task = await _db.tasks.get(id);
+    final task = await getById(id);
     if (task == null) return;
+    final now = DateTime.now();
     task.isCompleted = !task.isCompleted;
-    task.completedAt = task.isCompleted ? DateTime.now() : null;
+    task.completedAt = task.isCompleted ? now : null;
+    task.updatedAt = now;
     await _db.writeTxn(() async => _db.tasks.put(task));
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> delete(int id) async {
-    await _db.writeTxn(() async => _db.tasks.delete(id));
-    await BackupService.instance.scheduleBackup();
+    final task = await getById(id);
+    if (task == null) return;
+    final now = DateTime.now();
+    task.deletedAt = now;
+    task.updatedAt = now;
+    await _db.writeTxn(() async => _db.tasks.put(task));
+    await LocalChanges.instance.notify();
   }
 
   Future<void> reorder(List<Task> tasks) async {
+    final now = DateTime.now();
     await _db.writeTxn(() async {
       for (int i = 0; i < tasks.length; i++) {
+        if (tasks[i].sortOrder == i) continue;
         tasks[i].sortOrder = i;
+        tasks[i].updatedAt = now;
       }
       await _db.tasks.putAll(tasks);
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<int> _nextSortOrder(int milestoneId) async {
@@ -191,10 +226,12 @@ class TaskRepository {
     for (final task in tasks) {
       await task.milestone.load();
       final milestone = task.milestone.value;
+      if (milestone?.deletedAt != null) continue;
       Goal? goal;
       if (milestone != null) {
         await milestone.goal.load();
         goal = milestone.goal.value;
+        if (goal?.deletedAt != null) continue;
       }
       contexts.add(
         TodayTaskContext(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:intl/intl.dart';
@@ -59,20 +60,35 @@ class NotificationService {
     }
 
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings(
+    const darwin = DarwinInitializationSettings(
       requestAlertPermission: false,
       requestBadgePermission: false,
       requestSoundPermission: false,
     );
 
+    // macOS needs its own settings object. Omitting it does not degrade
+    // gracefully — the plugin throws, and since init() is awaited from main()
+    // the app never reaches runApp and shows no window at all.
     await _plugin.initialize(
-      const InitializationSettings(android: android, iOS: ios),
+      const InitializationSettings(
+        android: android,
+        iOS: darwin,
+        macOS: darwin,
+      ),
     );
     _initialized = true;
   }
 
+  /// True where background scheduling is actually available. Workmanager ships
+  /// Android and iOS implementations only; calling it on desktop throws a
+  /// MissingPluginException.
+  static bool get _supportsWorkmanager =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
   /// Initialize workmanager - call this in main.dart
   Future<void> initWorkmanager() async {
+    if (!_supportsWorkmanager) return;
     await Workmanager().initialize(callbackDispatcher);
   }
 
@@ -96,6 +112,16 @@ class NotificationService {
         IOSFlutterLocalNotificationsPlugin>();
     if (ios != null) {
       return await ios.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          false;
+    }
+    final macOS = _plugin.resolvePlatformSpecificImplementation<
+        MacOSFlutterLocalNotificationsPlugin>();
+    if (macOS != null) {
+      return await macOS.requestPermissions(
             alert: true,
             badge: true,
             sound: true,

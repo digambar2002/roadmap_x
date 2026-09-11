@@ -8,6 +8,7 @@ import '../../features/goals/presentation/goal_detail_screen.dart';
 import '../../features/focus/presentation/focus_screen.dart';
 import '../../features/schedule/presentation/schedule_screen.dart';
 import '../../features/analytics/presentation/analytics_screen.dart';
+import '../../features/premium/presentation/premium_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
@@ -75,6 +76,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/premium',
+        builder: (context, state) => const PremiumScreen(),
       ),
       GoRoute(
         path: '/focus/:goalId',

@@ -2,7 +2,7 @@ import 'package:isar_community/isar.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
-import '../../../core/services/backup_service.dart';
+import '../../../core/services/local_changes.dart';
 
 class MilestoneRepository {
   MilestoneRepository._();
@@ -14,6 +14,7 @@ class MilestoneRepository {
   // ── Streams ──────────────────────────────────────────────
   Stream<List<Milestone>> watchForGoal(int goalId) => _db.milestones
       .filter()
+      .deletedAtIsNull()
       .goal((q) => q.idEqualTo(goalId))
       .sortBySortOrder()
       .build()
@@ -22,12 +23,16 @@ class MilestoneRepository {
   // ── Reads ─────────────────────────────────────────────────
   Future<List<Milestone>> getForGoal(int goalId) => _db.milestones
       .filter()
+      .deletedAtIsNull()
       .goal((q) => q.idEqualTo(goalId))
       .sortBySortOrder()
       .build()
       .findAll();
 
-  Future<Milestone?> getById(int id) => _db.milestones.get(id);
+  Future<Milestone?> getById(int id) async {
+    final ms = await _db.milestones.get(id);
+    return ms?.deletedAt == null ? ms : null;
+  }
 
   // ── Writes ────────────────────────────────────────────────
   Future<Milestone> create({
@@ -45,45 +50,61 @@ class MilestoneRepository {
       ..theme = theme
       ..dueDate = dueDate
       ..sortOrder = await _nextSortOrder(goalId)
-      ..isCollapsed = false;
+      ..isCollapsed = false
+      // Kept alongside the link so the row is self-describing on the wire.
+      ..goalUid = goal.uid
+      ..updatedAt = DateTime.now();
     ms.goal.value = goal;
 
     await _db.writeTxn(() async {
       await _db.milestones.put(ms);
       await ms.goal.save();
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
     return ms;
   }
 
   Future<void> update(Milestone ms) async {
+    ms.updatedAt = DateTime.now();
     await _db.writeTxn(() async {
       await _db.milestones.put(ms);
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
+  /// Soft delete, cascading tombstones to the milestone's tasks.
   Future<void> delete(int id) async {
-    final ms = await _db.milestones.get(id);
+    final ms = await getById(id);
     if (ms == null) return;
+    final now = DateTime.now();
+
     await ms.tasks.load();
-    final taskIds = ms.tasks.map((t) => t.id).toList();
+    final tasks = ms.tasks.where((t) => t.deletedAt == null).toList();
+    for (final task in tasks) {
+      task.deletedAt = now;
+      task.updatedAt = now;
+    }
+    ms.deletedAt = now;
+    ms.updatedAt = now;
 
     await _db.writeTxn(() async {
-      await _db.tasks.deleteAll(taskIds);
-      await _db.milestones.delete(id);
+      await _db.tasks.putAll(tasks);
+      await _db.milestones.put(ms);
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<void> reorder(List<Milestone> milestones) async {
+    final now = DateTime.now();
     await _db.writeTxn(() async {
       for (int i = 0; i < milestones.length; i++) {
+        if (milestones[i].sortOrder == i) continue;
         milestones[i].sortOrder = i;
+        milestones[i].updatedAt = now;
       }
       await _db.milestones.putAll(milestones);
     });
-    await BackupService.instance.scheduleBackup();
+    await LocalChanges.instance.notify();
   }
 
   Future<int> _nextSortOrder(int goalId) async {

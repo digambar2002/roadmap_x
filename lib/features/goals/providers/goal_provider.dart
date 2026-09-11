@@ -21,7 +21,7 @@ final goalByIdProvider = StreamProvider.family<Goal?, int>((ref, id) {
   return ref.watch(goalRepositoryProvider).watchById(id);
 });
 
-// Goals filter state: 'all' | 'active' | 'archived'
+// Goals filter state: 'focus' | 'active' | 'all' | 'archived'
 final goalFilterProvider = StateProvider<String>((_) => 'active');
 
 // Filtered goals
@@ -33,6 +33,10 @@ final filteredGoalsProvider = Provider<AsyncValue<List<Goal>>>((ref) {
     switch (filter) {
       case 'archived':
         return goals.where((g) => g.isArchived).toList();
+      case 'focus':
+        return goals
+            .where((g) => !g.isArchived && g.priority == GoalPriority.focus)
+            .toList();
       case 'active':
         return goals.where((g) => !g.isArchived).toList();
       default:

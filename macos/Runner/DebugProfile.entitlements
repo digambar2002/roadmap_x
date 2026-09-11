@@ -8,5 +8,11 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- Outbound network: Supabase sync and the Gemini API. -->
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<!-- Backup export/import via the file picker. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
 </dict>
 </plist>

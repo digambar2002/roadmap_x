@@ -1,13 +1,19 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'core/utils/prefs_utils.dart';
+import 'core/db/db_migration.dart';
 import 'core/db/isar_service.dart';
 import 'core/router/app_router.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/notification_service.dart';
+import 'core/services/local_changes.dart';
 import 'core/services/shared_preferences_provider.dart';
+import 'core/services/synced_settings.dart';
+import 'core/sync/account_service.dart';
+import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
 import 'features/analytics/providers/activity_provider.dart';
 import 'features/schedule/data/schedule_repository.dart';
@@ -20,11 +26,30 @@ import 'shared/widgets/restore_backup_gate.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await IsarService.instance.init();
-  await NotificationService.instance.init();
-  await NotificationService.instance.initWorkmanager();
+  // Notifications are a nice-to-have; a platform that cannot provide them
+  // must not stop the app from starting. This is awaited before runApp, so an
+  // uncaught throw here means no window ever appears.
+  try {
+    await NotificationService.instance.init();
+    await NotificationService.instance.initWorkmanager();
+  } catch (error, stack) {
+    debugPrint('Notification setup failed, continuing without it: $error');
+    debugPrintStack(stackTrace: stack);
+  }
   await BackupService.instance.init();
 
   final prefs = await SharedPreferences.getInstance();
+
+  // Must run before anything reads goals, tasks or day history: it stamps the
+  // sync metadata onto rows written by pre-sync builds and lifts the habit and
+  // schedule history out of SharedPreferences into real rows.
+  await DbMigration.instance.run(prefs);
+  await SyncedSettings.instance.captureExisting(prefs);
+
+  // Both are no-ops without SUPABASE_* dart-defines, and for accounts that
+  // have not been activated. The app is fully usable either way.
+  await AccountService.instance.init(prefs);
+  await SyncService.instance.init(prefs);
   final dailyReminderEnabled =
       PrefsUtils.readBool(prefs, 'daily_reminder_enabled');
   final dailyReminderHour = prefs.getInt('daily_reminder_hour') ?? 9;
@@ -86,7 +111,7 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       _rolloverDayIfNeeded();
       Future<void>.microtask(() async {
         await _syncNotifications();
-        await BackupService.instance.scheduleBackup();
+        await LocalChanges.instance.notify();
       });
     }
   }

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
+import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -12,6 +13,9 @@ import '../../../core/models/models.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/data_export_service.dart';
 import '../../../core/services/notification_service.dart';
+import '../../../core/subscription/entitlements.dart';
+import '../../../core/sync/sync_service.dart';
+import '../../premium/providers/premium_provider.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../ai_coach/providers/ai_coach_provider.dart';
@@ -52,6 +56,12 @@ class SettingsScreen extends ConsumerWidget {
               initialValue: settings.userName,
               onChanged: (v) => notifier.setUserName(v),
             ).animate().fadeIn(delay: 80.ms).slideY(begin: 0.05),
+
+            const SizedBox(height: 24),
+
+            // ── Premium ───────────────────────────────────
+            _SectionHeader('Sync').animate().fadeIn(delay: 90.ms),
+            const _PremiumTile(),
 
             const SizedBox(height: 24),
 
@@ -309,6 +319,49 @@ class _SectionHeader extends StatelessWidget {
           color: cs.onSurfaceVariant,
           letterSpacing: 1.2,
         ),
+      ),
+    );
+  }
+}
+
+// ── Premium / sync entry ──────────────────────────────────
+
+class _PremiumTile extends ConsumerWidget {
+  const _PremiumTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    final isPremium = ref.watch(isPremiumProvider);
+    final isAvailable = ref.watch(syncAvailableProvider);
+    final status = ref.watch(syncStatusProvider).valueOrNull;
+
+    final String subtitle;
+    if (!isAvailable) {
+      subtitle = 'Not available in this build — the app stays local';
+    } else if (!isPremium) {
+      subtitle = 'Keep every device in step. Tap to activate.';
+    } else if (status?.stage == SyncStage.syncing) {
+      subtitle = 'Syncing…';
+    } else if (status?.stage == SyncStage.error) {
+      subtitle = 'Sync failed — will retry';
+    } else {
+      subtitle = 'Active on this device';
+    }
+
+    return _SettingsSurface(
+      child: ListTile(
+        leading: Icon(
+          isPremium ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
+          color: isPremium ? cs.primary : cs.onSurfaceVariant,
+        ),
+        title: Text(
+          isPremium ? Entitlements.productName : 'Multi-device sync',
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Text(subtitle),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => context.push('/premium'),
       ),
     );
   }

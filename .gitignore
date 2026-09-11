@@ -48,3 +48,14 @@ app.*.map.json
 android/key.properties
 android/app/*.jks
 android/app/*.keystore
+
+# Isar native library, downloaded on demand by tests
+libisar.dylib
+libisar*.so
+isar.dll
+
+# Supabase keys. The anon key is public by design and RLS is what protects the
+# data, but this repository is public: committing it invites strangers to burn
+# the project's free-tier signup and email quota. Copy
+# dart_defines.example.json to dart_defines.json and fill it in locally.
+dart_defines.json

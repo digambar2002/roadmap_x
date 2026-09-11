@@ -9,9 +9,6 @@ import '../../../core/utils/date_utils.dart';
 import '../../../shared/widgets/animated_checkbox.dart';
 import '../../../shared/widgets/due_date_badge.dart';
 import '../../../shared/widgets/empty_state.dart';
-import '../../../shared/widgets/progress_bar.dart';
-import '../../../shared/widgets/progress_ring.dart';
-import '../../ai_coach/presentation/daily_briefing_card.dart';
 import '../../ai_coach/providers/ai_coach_provider.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../../ai_goal/presentation/ai_goal_sheet.dart';
@@ -21,6 +18,13 @@ import '../../settings/providers/habit_checkin_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../tasks/providers/task_provider.dart';
+import '../../premium/presentation/premium_gate.dart';
+
+import '../../goals/presentation/widgets/create_edit_goal_sheet.dart';
+import 'widgets/collapsible_briefing.dart';
+import 'widgets/dashboard_header.dart';
+import 'widgets/focus_goals_section.dart';
+import 'widgets/stat_strip.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -42,8 +46,16 @@ class DashboardScreen extends ConsumerWidget {
         ref.watch(scheduleCompletedUidsProvider(todayDate));
 
     final userName = settingsAsync.value?.userName ?? 'there';
+    final grouped = todayGroupedAsync.valueOrNull;
+    final dash = dashAsync.valueOrNull;
+
+    final overdue = grouped?.overdue.length ?? 0;
+    final dueToday = grouped?.dueToday.length ?? 0;
+    final streak = streakAsync.valueOrNull ?? 0;
+    final percent = dash?.overallPercent ?? 0;
+
     return Scaffold(
-      backgroundColor: cs.background,
+      backgroundColor: cs.surface,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
@@ -55,93 +67,84 @@ class DashboardScreen extends ConsumerWidget {
           },
           child: CustomScrollView(
             slivers: [
-              // ── Greeting ───────────────────────────────────
+              // ── Header ─────────────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${AppDateUtils.greeting()}, $userName 👋',
-                        style: tt.headlineSmall
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        AppDateUtils.formatDateWithDay(DateTime.now()),
-                        style:
-                            tt.bodyMedium?.copyWith(color: cs.onSurfaceVariant),
-                      ),
-                      const SizedBox(height: 12),
-                      const DailyBriefingCard(),
-                      const SizedBox(height: 10),
-                      _AiQuickAction(
-                        onPressed: () async {
-                          final goalId = await showAiGoalSheet(context);
-                          if (!context.mounted || goalId == null) return;
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: DashboardHeader(
+                    greeting: '${AppDateUtils.greeting()}, $userName',
+                    date: AppDateUtils.formatDateWithDay(now),
+                    onNewGoal: () => _createGoal(context, ref),
+                    onGenerateWithAi: () => _generateWithAi(context, ref),
+                  ),
+                ).animate().fadeIn(duration: 250.ms),
+              ),
 
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('🎉 Goal created! Start working on it.'),
-                            ),
-                          );
-                          context.go('/goals/$goalId');
-                        },
+              // ── Headline numbers ───────────────────────────
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+                  child: StatStrip(
+                    stats: [
+                      DashboardStat(
+                        value: '$overdue',
+                        label: 'Overdue',
+                        icon: Icons.error_outline_rounded,
+                        color: cs.error,
+                        // Zero overdue is good news, so it is not painted red.
+                        isMuted: overdue == 0,
+                        onTap: () => context.go('/today'),
+                      ),
+                      DashboardStat(
+                        value: '$dueToday',
+                        label: 'Today',
+                        icon: Icons.today_rounded,
+                        color: const Color(0xFF5B9CF6),
+                        isMuted: dueToday == 0,
+                        onTap: () => context.go('/today'),
+                      ),
+                      DashboardStat(
+                        value: '${(percent * 100).round()}%',
+                        label: 'Progress',
+                        icon: Icons.trending_up_rounded,
+                        color: const Color(0xFF34D399),
+                        onTap: () => context.go('/analytics'),
+                      ),
+                      DashboardStat(
+                        value: '$streak',
+                        label: 'Streak',
+                        icon: Icons.local_fire_department_rounded,
+                        color: const Color(0xFFF59E0B),
+                        isMuted: streak == 0,
+                        onTap: () => context.go('/analytics'),
                       ),
                     ],
                   ),
-                ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.05),
+                ).animate().fadeIn(delay: 60.ms),
               ),
 
-              // ── Overall progress ───────────────────────────
+              // ── Goals, led by Focus ────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                   child: dashAsync.when(
-                    loading: () => const _ProgressCardSkeleton(),
-                    error: (e, _) => Text('Error: $e'),
-                    data: (data) => _OverallProgressCard(data: data),
+                    loading: () => const SizedBox(height: 80),
+                    error: (error, _) => Text('Error: $error'),
+                    data: (data) => data.goals.isEmpty
+                        ? EmptyState(
+                            emoji: '🎯',
+                            title: 'No goals yet',
+                            subtitle:
+                                'Create one to start tracking your progress.',
+                            buttonLabel: 'New goal',
+                            onButton: () => _createGoal(context, ref),
+                          )
+                        : FocusGoalsSection(data: data),
                   ),
                 ).animate().fadeIn(delay: 100.ms),
               ),
 
-              // ── Goals row ──────────────────────────────────
-              SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-                      child: Text('Goals',
-                          style: tt.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                    ),
-                    dashAsync.when(
-                      loading: () => const SizedBox(height: 120),
-                      error: (_, __) => const SizedBox.shrink(),
-                      data: (data) => data.goals.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 20),
-                              child: EmptyState(
-                                emoji: '🎯',
-                                title: 'No goals yet',
-                                subtitle:
-                                    'Tap Goals tab to create your first goal.',
-                              ),
-                            )
-                          : _GoalsSummaryRow(data: data),
-                    ),
-                  ],
-                ).animate().fadeIn(delay: 150.ms),
-              ),
-
-              // ── Today tasks chip ───────────────────────────
-              SliverToBoxAdapter(
-                child: _TodayTasksChip(groupedAsync: todayGroupedAsync),
-              ),
-
-              // ── Today's tasks preview ──────────────────────
+              // ── Next up ────────────────────────────────────
               SliverToBoxAdapter(
                 child: _TodayTasksPreview(groupedAsync: todayGroupedAsync),
               ),
@@ -152,15 +155,19 @@ class DashboardScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
                       child: Row(
                         children: [
                           Expanded(
-                            child: Text("Today's Schedule",
-                                style: tt.titleMedium
-                                    ?.copyWith(fontWeight: FontWeight.w700)),
+                            child: Text("Today's schedule",
+                                style: tt.titleSmall?.copyWith(
+                                    fontWeight: FontWeight.w700)),
                           ),
                           TextButton(
+                            style: TextButton.styleFrom(
+                              visualDensity: VisualDensity.compact,
+                              padding: const EdgeInsets.symmetric(horizontal: 8),
+                            ),
                             onPressed: () => context.go('/schedule'),
                             child: const Text('See all'),
                           ),
@@ -191,23 +198,31 @@ class DashboardScreen extends ConsumerWidget {
                             ),
                     ),
                   ],
-                ).animate().fadeIn(delay: 200.ms),
+                ).animate().fadeIn(delay: 150.ms),
               ),
 
               // ── Non-negotiables ────────────────────────────
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
                   child: settingsAsync.when(
                     loading: () => const SizedBox.shrink(),
                     error: (_, __) => const SizedBox.shrink(),
                     data: (s) => _NonNegotiablesWidget(
                       items: s.nonNegotiables,
                       checks: habitsAsync.valueOrNull ?? List.filled(4, false),
-                      streak: streakAsync.valueOrNull ?? 0,
+                      streak: streak,
                     ),
                   ),
-                ).animate().fadeIn(delay: 250.ms),
+                ).animate().fadeIn(delay: 200.ms),
+              ),
+
+              // ── AI briefing, last and closed by default ────
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 24, 20, 32),
+                  child: CollapsibleBriefing(),
+                ),
               ),
             ],
           ),
@@ -215,53 +230,28 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
-}
 
-class _AiQuickAction extends StatelessWidget {
-  const _AiQuickAction({required this.onPressed});
-
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: ActionChip(
-        avatar: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
-          ).createShader(bounds),
-          child: const Icon(Icons.auto_awesome, color: Colors.white, size: 18),
-        ),
-        label: const Text('✦ Generate with AI'),
-        onPressed: onPressed,
-      ),
+  Future<void> _createGoal(BuildContext context, WidgetRef ref) async {
+    if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+    if (!context.mounted) return;
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const CreateEditGoalSheet(),
     );
   }
-}
 
-class _TodayTasksChip extends StatelessWidget {
-  final AsyncValue<TodayTasksData> groupedAsync;
-  const _TodayTasksChip({required this.groupedAsync});
+  Future<void> _generateWithAi(BuildContext context, WidgetRef ref) async {
+    if (!await PremiumGate.ensureAi(context, ref)) return;
+    if (!context.mounted) return;
+    final goalId = await showAiGoalSheet(context);
+    if (!context.mounted || goalId == null) return;
 
-  @override
-  Widget build(BuildContext context) {
-    return groupedAsync.when(
-      loading: () => const SizedBox.shrink(),
-      error: (_, __) => const SizedBox.shrink(),
-      data: (data) {
-        final count = data.actionableCount;
-        if (count == 0) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: ActionChip(
-            avatar: const Icon(Icons.today, size: 18),
-            label: Text('$count task${count == 1 ? '' : 's'} due — open Today'),
-            onPressed: () => context.go('/today'),
-          ),
-        );
-      },
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('🎉 Goal created! Start working on it.')),
     );
+    context.go('/goals/$goalId');
   }
 }
 
@@ -309,167 +299,6 @@ class _TodayTasksPreview extends StatelessWidget {
 }
 
 // ── Overall progress card ─────────────────────────────────
-
-class _OverallProgressCard extends StatelessWidget {
-  final DashboardData data;
-  const _OverallProgressCard({required this.data});
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFF5B9CF6).withOpacity(0.15),
-            const Color(0xFF34D399).withOpacity(0.08),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cs.outline),
-      ),
-      child: Row(
-        children: [
-          ProgressRing(
-            percent: data.overallPercent,
-            color: const Color(0xFF5B9CF6),
-            size: 80,
-            strokeWidth: 7,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${(data.overallPercent * 100).toInt()}%',
-                  style: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF5B9CF6),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 20),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Overall Progress',
-                    style:
-                        tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
-                const SizedBox(height: 4),
-                Text(
-                  '${data.totalDone} of ${data.totalTasks} tasks completed',
-                  style: tt.bodySmall,
-                ),
-                const SizedBox(height: 10),
-                ProgressBar(
-                  percent: data.overallPercent,
-                  color: const Color(0xFF5B9CF6),
-                  height: 6,
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ProgressCardSkeleton extends StatelessWidget {
-  const _ProgressCardSkeleton();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      height: 100,
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceVariant,
-        borderRadius: BorderRadius.circular(20),
-      ),
-    );
-  }
-}
-
-// ── Goals summary row ─────────────────────────────────────
-
-class _GoalsSummaryRow extends ConsumerWidget {
-  final DashboardData data;
-  const _GoalsSummaryRow({required this.data});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return SizedBox(
-      height: 130,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: data.goals.length,
-        itemBuilder: (context, i) {
-          final goal = data.goals[i];
-          final color = Color(goal.colorHex);
-          final pct = data.goalProgress[goal.id] ?? 0;
-          return Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: GestureDetector(
-              onTap: () => context.push('/goals/${goal.id}'),
-              child: Container(
-                width: 120,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: color.withOpacity(0.3)),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(goal.emoji, style: const TextStyle(fontSize: 22)),
-                        const Spacer(),
-                        ProgressRing(
-                          percent: pct,
-                          color: color,
-                          size: 32,
-                          strokeWidth: 3,
-                          child: Text(
-                            '${(pct * 100).toInt()}%',
-                            style: TextStyle(
-                              fontSize: 7,
-                              fontWeight: FontWeight.w700,
-                              color: color,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Text(
-                      goal.name,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: Theme.of(context).colorScheme.onBackground,
-                          ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ).animate().fadeIn(delay: (i * 40).ms).slideX(begin: 0.1);
-        },
-      ),
-    );
-  }
-}
-
-// ── Today's schedule list ─────────────────────────────────
 
 class _TodayScheduleList extends ConsumerWidget {
   final List<ScheduleItem> items;
