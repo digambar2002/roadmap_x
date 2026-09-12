@@ -10,8 +10,12 @@ class CoachContextBuilder {
     final today = DateTime(now.year, now.month, now.day);
     final weekStart = today.subtract(Duration(days: today.weekday - 1));
 
-    final goals = await db.goals.filter().isArchivedEqualTo(false).findAll();
-    final tasks = await db.tasks.where().findAll();
+    final goals = await db.goals
+        .filter()
+        .deletedAtIsNull()
+        .isArchivedEqualTo(false)
+        .findAll();
+    final tasks = await db.tasks.filter().deletedAtIsNull().findAll();
     final completedTasks = tasks.where((t) => t.isCompleted).toList();
 
     final doneToday = completedTasks.where((t) {

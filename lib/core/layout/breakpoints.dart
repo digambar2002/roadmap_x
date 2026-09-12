@@ -29,10 +29,10 @@ class Breakpoints {
   /// Rows stretched across a 2000px monitor are the main reason the app read
   /// as a blown-up phone: the eye has to travel the full width to pair a label
   /// on the left with its value on the right.
-  static const double readableMaxWidth = 780;
+  static const double readableMaxWidth = 960;
 
   /// Ceiling for screens that lay out several columns side by side.
-  static const double wideMaxWidth = 1240;
+  static const double wideMaxWidth = 1200;
 
   static WindowSize sizeFor(double width) {
     if (width >= expanded) return WindowSize.expanded;

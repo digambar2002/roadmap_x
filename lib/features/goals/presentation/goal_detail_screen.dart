@@ -500,7 +500,7 @@ class _MilestonesListState extends ConsumerState<_MilestonesList> {
                   onToggle: () => setState(
                     () => _expanded[ms.id] = !(_expanded[ms.id] ?? false),
                   ),
-                ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
+                ),
               );
             },
           ),
@@ -750,7 +750,7 @@ class _TasksList extends ConsumerWidget {
                 task: task,
                 goalColor: goalColor,
                 onComplete: onComplete,
-              ).animate().fadeIn(delay: (i * 20).ms),
+              ),
             );
           },
         ),

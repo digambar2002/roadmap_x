@@ -110,16 +110,17 @@ class GoalsScreen extends ConsumerWidget {
           elevation: 0,
           backgroundColor: Colors.transparent,
           onPressed: () => _showOptions(context, ref),
-          icon: const Icon(Icons.auto_awesome, color: Colors.white),
+          icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
           label: const Text(
             'New Goal',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
+              fontSize: 14,
             ),
           ),
         ),
-      ).animate().scale(delay: 200.ms),
+      ),
     );
   }
 
@@ -322,7 +323,7 @@ class _GoalsList extends ConsumerWidget {
           key: ValueKey(goal.id),
           child: _GoalCard(
             goal: goal,
-          ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
+          ),
         );
       },
     );

@@ -208,7 +208,7 @@ class _ScheduleList extends StatelessWidget {
         key: ValueKey(sorted[i].uid),
         item: sorted[i],
         selectedDate: selectedDate,
-      ).animate().fadeIn(delay: (i * 40).ms).slideY(begin: 0.05),
+      ),
     );
   }
 

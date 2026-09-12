@@ -7,6 +7,7 @@ class CustomButton extends StatelessWidget {
   final bool outlined;
   final Color? color;
   final Widget? icon;
+  final double height;
 
   const CustomButton({
     super.key,
@@ -16,6 +17,7 @@ class CustomButton extends StatelessWidget {
     this.outlined = false,
     this.color,
     this.icon,
+    this.height = 48,
   });
 
   @override
@@ -23,25 +25,59 @@ class CustomButton extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     final bg = color ?? cs.primary;
 
+    final content = isLoading
+        ? SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: outlined ? bg : Colors.white,
+            ),
+          )
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (icon != null) ...[
+                IconTheme(
+                  data: IconThemeData(
+                    size: 18,
+                    color: outlined ? bg : Colors.white,
+                  ),
+                  child: icon!,
+                ),
+                const SizedBox(width: 8),
+              ],
+              Flexible(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: outlined ? bg : Colors.white,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          );
+
     if (outlined) {
-      return OutlinedButton.icon(
+      return OutlinedButton(
         onPressed: isLoading ? null : onPressed,
-        icon: icon ?? const SizedBox.shrink(),
-        label: isLoading
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : Text(label),
         style: OutlinedButton.styleFrom(
           foregroundColor: bg,
-          side: BorderSide(color: bg),
-          minimumSize: const Size.fromHeight(48),
+          side: BorderSide(color: bg, width: 1.2),
+          minimumSize: Size.fromHeight(height),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
+        child: content,
       );
     }
 
@@ -50,27 +86,16 @@ class CustomButton extends StatelessWidget {
       style: ElevatedButton.styleFrom(
         backgroundColor: bg,
         foregroundColor: Colors.white,
-        minimumSize: const Size.fromHeight(48),
+        disabledBackgroundColor: bg.withValues(alpha: 0.4),
+        disabledForegroundColor: Colors.white70,
+        elevation: 0,
+        minimumSize: Size.fromHeight(height),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      child: isLoading
-          ? const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-          : Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                if (icon != null) ...[icon!, const SizedBox(width: 8)],
-                Text(label),
-              ],
-            ),
+      child: content,
     );
   }
 }

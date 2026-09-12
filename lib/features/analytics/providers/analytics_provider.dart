@@ -7,6 +7,7 @@ import '../../../core/services/habit_checkin_service.dart';
 import '../../../core/services/schedule_completion_service.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/progress_utils.dart';
+import '../../tasks/providers/task_provider.dart';
 import 'activity_provider.dart';
 
 class AnalyticsData {
@@ -68,12 +69,14 @@ class WeeklyReview {
 
 final analyticsDataProvider = FutureProvider<AnalyticsData>((ref) async {
   ref.watch(activityTickProvider);
+  ref.watch(taskChangesProvider);
+  ref.watch(goalChangesProvider);
 
   final db = IsarService.instance.db;
   final now = DateTime.now();
   final today = AppDateUtils.normalizeDate(now);
 
-  final allTasks = await db.tasks.where().anyId().build().findAll();
+  final allTasks = await db.tasks.filter().deletedAtIsNull().findAll();
   final completedTasks = allTasks.where((t) => t.isCompleted).toList();
 
   final habitCompleteDays =
@@ -163,15 +166,21 @@ final analyticsDataProvider = FutureProvider<AnalyticsData>((ref) async {
     prev = d;
   }
 
-  final goals = await db.goals.filter().isArchivedEqualTo(false).findAll();
+  final goals = await db.goals
+      .filter()
+      .deletedAtIsNull()
+      .isArchivedEqualTo(false)
+      .findAll();
   final goalStats = <GoalStat>[];
   for (final g in goals) {
     await g.milestones.load();
     int gt = 0, gd = 0;
     for (final ms in g.milestones) {
+      if (ms.deletedAt != null) continue;
       await ms.tasks.load();
-      gt += ms.tasks.length;
-      gd += ms.tasks.where((t) => t.isCompleted).length;
+      final activeTasks = ms.tasks.where((t) => t.deletedAt == null);
+      gt += activeTasks.length;
+      gd += activeTasks.where((t) => t.isCompleted).length;
     }
     goalStats.add(GoalStat(
       goal: g,

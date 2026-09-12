@@ -174,6 +174,31 @@ class TaskRepository {
     await LocalChanges.instance.notify();
   }
 
+  Future<void> setDueDate(int taskId, DateTime? dueDate) async {
+    final task = await getById(taskId);
+    if (task == null) return;
+    task.dueDate = dueDate;
+    task.updatedAt = DateTime.now();
+    await _db.writeTxn(() async => _db.tasks.put(task));
+    await LocalChanges.instance.notify();
+  }
+
+  Future<void> setDueDates(List<int> taskIds, DateTime? dueDate) async {
+    if (taskIds.isEmpty) return;
+    final now = DateTime.now();
+    await _db.writeTxn(() async {
+      for (final id in taskIds) {
+        final task = await _db.tasks.get(id);
+        if (task != null && task.deletedAt == null) {
+          task.dueDate = dueDate;
+          task.updatedAt = now;
+          await _db.tasks.put(task);
+        }
+      }
+    });
+    await LocalChanges.instance.notify();
+  }
+
   Future<void> toggleComplete(int id) async {
     final task = await getById(id);
     if (task == null) return;
