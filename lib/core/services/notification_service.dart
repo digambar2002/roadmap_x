@@ -48,8 +48,20 @@ class NotificationService {
   static const _taskDuePayloadPrefix = 'task_due:';
   static const _dailyReminderId = 1;
 
+  static bool supportsNotificationsFor(TargetPlatform platform) =>
+      platform == TargetPlatform.android ||
+      platform == TargetPlatform.iOS ||
+      platform == TargetPlatform.macOS;
+
+  static bool get _supportsNotifications =>
+      supportsNotificationsFor(defaultTargetPlatform);
+
   Future<void> init() async {
     if (_initialized) return;
+    if (!_supportsNotifications) {
+      _initialized = true;
+      return;
+    }
 
     tz.initializeTimeZones();
     try {
@@ -93,6 +105,8 @@ class NotificationService {
   }
 
   Future<bool> requestPermission() async {
+    if (!_supportsNotifications) return false;
+
     final android = _plugin.resolvePlatformSpecificImplementation<
         AndroidFlutterLocalNotificationsPlugin>();
     if (android != null) {
@@ -150,6 +164,7 @@ class NotificationService {
     required int hour,
     required int minute,
   }) async {
+    if (!_supportsNotifications) return;
     if (!_initialized) {
       await init();
     }
@@ -239,6 +254,7 @@ class NotificationService {
 
   /// Sync schedule notifications - use workmanager as primary, fallback to zonedSchedule
   Future<void> syncScheduleNotifications(List<ScheduleItem> items) async {
+    if (!_supportsNotifications) return;
     if (!_initialized) {
       await init();
     }
@@ -275,6 +291,7 @@ class NotificationService {
     List<Task> tasks, {
     bool enabled = true,
   }) async {
+    if (!_supportsNotifications) return;
     if (!_initialized) {
       await init();
     }
