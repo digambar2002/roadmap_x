@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,6 +12,7 @@ import 'core/services/local_changes.dart';
 import 'core/services/onboarding.dart';
 import 'core/services/shared_preferences_provider.dart';
 import 'core/services/synced_settings.dart';
+import 'core/services/widget_sync_service.dart';
 import 'core/sync/account_service.dart';
 import 'core/sync/sync_service.dart';
 import 'core/theme/app_theme.dart';
@@ -140,6 +140,12 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
   Future<void> _bootstrapRuntimeServices() async {
     await BackupService.instance.init();
     await _syncNotifications();
+    await WidgetSyncService.instance.syncTodayTasks();
+    await WidgetSyncService.instance.initLaunchListener((uri) {
+      if (uri.host == 'today' || uri.path.contains('today')) {
+        ref.read(appRouterProvider).go('/today');
+      }
+    });
   }
 
   Future<void> _syncNotifications() async {

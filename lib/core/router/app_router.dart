@@ -22,14 +22,26 @@ final appRouterProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/dashboard',
     redirect: (context, state) {
-      if (Onboarding.isComplete(prefs)) return null;
-      // /premium stays reachable so "I already have an account" can sign in
-      // without being bounced back to the welcome screen.
-      const allowed = {'/welcome', '/premium'};
-      if (allowed.contains(state.matchedLocation)) return null;
-      return '/welcome';
+      if (!Onboarding.isComplete(prefs)) {
+        const allowed = {'/welcome', '/premium'};
+        if (allowed.contains(state.matchedLocation)) return null;
+        return '/welcome';
+      }
+      final uri = state.uri;
+      if (uri.scheme == 'roadmapx' || uri.host == 'today' || uri.path.contains('today')) {
+        return '/today';
+      }
+      if (state.matchedLocation == '/' || uri.path == '/' || uri.path.isEmpty) {
+        return '/dashboard';
+      }
+      return null;
     },
+    errorBuilder: (context, state) => const TodayScreen(),
     routes: [
+      GoRoute(
+        path: '/',
+        redirect: (_, __) => '/dashboard',
+      ),
       GoRoute(
         path: '/welcome',
         builder: (context, state) => const WelcomeScreen(),
