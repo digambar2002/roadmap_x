@@ -89,8 +89,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/schedule',
-                builder: (context, state) => const ScheduleScreen(),
+                path: '/habits',
+                builder: (context, state) => const HabitsScreen(),
               ),
             ],
           ),
@@ -103,6 +103,10 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             ],
           ),
         ],
+      ),
+      GoRoute(
+        path: '/schedule',
+        builder: (context, state) => const ScheduleScreen(),
       ),
       GoRoute(
         path: '/settings',

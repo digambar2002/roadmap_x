@@ -64,7 +64,7 @@ const _navItems = [
   _NavItem(icon: Icons.home_rounded, label: 'Home'),
   _NavItem(icon: Icons.today_rounded, label: 'Today'),
   _NavItem(icon: Icons.flag_rounded, label: 'Goals'),
-  _NavItem(icon: Icons.calendar_month_rounded, label: 'Schedule'),
+  _NavItem(icon: Icons.check_circle_outline_rounded, label: 'Habits'),
   _NavItem(icon: Icons.bar_chart_rounded, label: 'Stats'),
 ];
 

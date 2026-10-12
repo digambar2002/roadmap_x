@@ -26,6 +26,8 @@ import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/layout/breakpoints.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../admin/providers/admin_provider.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../core/theme/colors.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -72,9 +74,11 @@ class SettingsScreen extends ConsumerWidget {
 
               const SizedBox(height: 24),
 
-              // ── Daily habits ─────────────────────────────
-              const _SectionHeader('Daily habits'),
+              // ── Routines & Habits ─────────────────────────
+              const _SectionHeader('Routines & Habits'),
               const _HabitsTile(),
+              const SizedBox(height: 10),
+              const _ScheduleTile(),
 
               const SizedBox(height: 24),
 
@@ -84,6 +88,13 @@ class SettingsScreen extends ConsumerWidget {
                 current: settings.themeMode,
                 onChanged: notifier.setThemeMode,
               ),
+              if (settings.themeMode != 'light') ...[
+                const SizedBox(height: 10),
+                _DarkModeStyleTile(
+                  current: settings.darkModeStyle,
+                  onChanged: notifier.setDarkModeStyle,
+                ),
+              ],
 
               const SizedBox(height: 24),
 
@@ -349,18 +360,40 @@ class _HabitsTile extends ConsumerWidget {
 
     return _SettingsSurface(
       child: ListTile(
-        leading: Icon(Icons.checklist_rounded, color: cs.primary),
+        leading: Icon(Icons.check_circle_outline_rounded, color: cs.primary),
         title: const Text(
-          'Non-negotiables',
+          'Habit Tracker',
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
         subtitle: Text(
           count == 0
-              ? 'None yet — add the things you do every day'
+              ? 'None yet — customize habits, colors and reminders'
               : '$count habit${count == 1 ? '' : 's'} tracked daily',
         ),
         trailing: const Icon(Icons.chevron_right_rounded),
         onTap: () => context.push('/habits'),
+      ),
+    );
+  }
+}
+
+class _ScheduleTile extends ConsumerWidget {
+  const _ScheduleTile();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+
+    return _SettingsSurface(
+      child: ListTile(
+        leading: Icon(Icons.calendar_month_rounded, color: cs.primary),
+        title: const Text(
+          'Daily Schedule & Routines',
+          style: TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: const Text('Manage your daily time blocks and schedule'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => context.push('/schedule'),
       ),
     );
   }
@@ -560,6 +593,79 @@ class _ThemeTile extends StatelessWidget {
             onTap: () => onChanged(modes[i]),
           );
         }),
+      ),
+    );
+  }
+}
+
+class _DarkModeStyleTile extends StatelessWidget {
+  final String current;
+  final ValueChanged<String> onChanged;
+  const _DarkModeStyleTile({required this.current, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final tt = Theme.of(context).textTheme;
+
+    final styles = [
+      (
+        key: DarkModeStyle.charcoal.key,
+        title: DarkModeStyle.charcoal.label,
+        subtitle: DarkModeStyle.charcoal.description,
+        swatch: AppColors.charcoalDarkBackground,
+        border: AppColors.charcoalDarkBorder,
+      ),
+      (
+        key: DarkModeStyle.classic.key,
+        title: DarkModeStyle.classic.label,
+        subtitle: DarkModeStyle.classic.description,
+        swatch: AppColors.classicDarkBackground,
+        border: AppColors.classicDarkBorder,
+      ),
+      (
+        key: DarkModeStyle.oled.key,
+        title: DarkModeStyle.oled.label,
+        subtitle: DarkModeStyle.oled.description,
+        swatch: AppColors.oledDarkBackground,
+        border: AppColors.oledDarkBorder,
+      ),
+    ];
+
+    return _SettingsSurface(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              'Dark Mode Style',
+              style: tt.labelLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: cs.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final item in styles) ...[
+            ListTile(
+              leading: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: item.swatch,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: item.border, width: 2),
+                ),
+              ),
+              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: Text(item.subtitle, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              trailing: current == item.key
+                  ? Icon(Icons.check_circle, color: cs.primary)
+                  : null,
+              onTap: () => onChanged(item.key),
+            ),
+          ],
+        ],
       ),
     );
   }

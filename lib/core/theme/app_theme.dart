@@ -4,10 +4,35 @@ import 'package:google_fonts/google_fonts.dart';
 import '../layout/breakpoints.dart';
 import 'colors.dart';
 
+enum DarkModeStyle {
+  classic('classic', 'Classic Midnight', 'Deep blue dark aesthetic'),
+  charcoal('charcoal', 'Charcoal Neutral', 'Minimal neutral dark, no blue tint'),
+  oled('oled', 'Pure Black (OLED)', 'Pitch black with crisp contrast');
+
+  final String key;
+  final String label;
+  final String description;
+  const DarkModeStyle(this.key, this.label, this.description);
+
+  static DarkModeStyle fromKey(String? key) {
+    switch (key) {
+      case 'charcoal':
+        return DarkModeStyle.charcoal;
+      case 'oled':
+        return DarkModeStyle.oled;
+      case 'classic':
+      default:
+        return DarkModeStyle.classic;
+    }
+  }
+}
+
 class AppTheme {
   AppTheme._();
 
-  static ThemeData get dark => _buildTheme(Brightness.dark);
+  static ThemeData get dark => buildDark(DarkModeStyle.classic);
+  static ThemeData buildDark([DarkModeStyle style = DarkModeStyle.classic]) =>
+      _buildTheme(Brightness.dark, darkStyle: style);
   static ThemeData get light => _buildTheme(Brightness.light);
 
   /// Desktop trims a little off every size.
@@ -22,17 +47,54 @@ class AppTheme {
 
   static const double _denseFontFactor = 0.94;
 
-  static ThemeData _buildTheme(Brightness brightness) {
+  static ThemeData _buildTheme(
+    Brightness brightness, {
+    DarkModeStyle darkStyle = DarkModeStyle.classic,
+  }) {
     final isDark = brightness == Brightness.dark;
 
-    final bg = isDark ? AppColors.darkBackground : AppColors.lightBackground;
-    final surface = isDark ? AppColors.darkSurface : AppColors.lightSurface;
-    final card = isDark ? AppColors.darkCard : AppColors.lightCard;
-    final border = isDark ? AppColors.darkBorder : AppColors.lightBorder;
-    final textPrimary =
-        isDark ? AppColors.darkTextPrimary : AppColors.lightTextPrimary;
-    final textMuted =
-        isDark ? AppColors.darkTextMuted : AppColors.lightTextMuted;
+    final Color bg;
+    final Color surface;
+    final Color card;
+    final Color border;
+    final Color textPrimary;
+    final Color textMuted;
+
+    if (isDark) {
+      switch (darkStyle) {
+        case DarkModeStyle.charcoal:
+          bg = AppColors.charcoalDarkBackground;
+          surface = AppColors.charcoalDarkSurface;
+          card = AppColors.charcoalDarkCard;
+          border = AppColors.charcoalDarkBorder;
+          textPrimary = AppColors.charcoalDarkTextPrimary;
+          textMuted = AppColors.charcoalDarkTextMuted;
+          break;
+        case DarkModeStyle.oled:
+          bg = AppColors.oledDarkBackground;
+          surface = AppColors.oledDarkSurface;
+          card = AppColors.oledDarkCard;
+          border = AppColors.oledDarkBorder;
+          textPrimary = AppColors.oledDarkTextPrimary;
+          textMuted = AppColors.oledDarkTextMuted;
+          break;
+        case DarkModeStyle.classic:
+          bg = AppColors.classicDarkBackground;
+          surface = AppColors.classicDarkSurface;
+          card = AppColors.classicDarkCard;
+          border = AppColors.classicDarkBorder;
+          textPrimary = AppColors.classicDarkTextPrimary;
+          textMuted = AppColors.classicDarkTextMuted;
+          break;
+      }
+    } else {
+      bg = AppColors.lightBackground;
+      surface = AppColors.lightSurface;
+      card = AppColors.lightCard;
+      border = AppColors.lightBorder;
+      textPrimary = AppColors.lightTextPrimary;
+      textMuted = AppColors.lightTextMuted;
+    }
 
     final colorScheme = ColorScheme(
       brightness: brightness,
@@ -47,6 +109,9 @@ class AppTheme {
       surface: surface,
       onSurface: textPrimary,
       surfaceVariant: card,
+      surfaceContainerHighest: card,
+      surfaceContainer: surface,
+      surfaceContainerLow: bg,
       onSurfaceVariant: textMuted,
       outline: border,
       outlineVariant: border.withOpacity(0.5),

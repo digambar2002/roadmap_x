@@ -29,6 +29,7 @@ import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/layout/breakpoints.dart';
 import '../../premium/presentation/account_button.dart';
+import 'widgets/daily_habits_section.dart';
 import 'widgets/today_tasks_section.dart';
 
 class DashboardScreen extends ConsumerWidget {
@@ -124,7 +125,7 @@ class DashboardScreen extends ConsumerWidget {
           visualDensity: VisualDensity.compact,
           padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
-        onPressed: () => context.go('/schedule'),
+        onPressed: () => context.push('/schedule'),
         child: const Text('See all'),
       ),
       child: scheduleAsync.when(
@@ -136,7 +137,7 @@ class DashboardScreen extends ConsumerWidget {
                 title: 'No schedule for today',
                 subtitle: 'Add daily routines in the Schedule tab.',
                 buttonLabel: 'Go to Schedule',
-                onButton: () => context.go('/schedule'),
+                onButton: () => context.push('/schedule'),
               )
             : _TodayScheduleList(
                 items: items,
@@ -146,7 +147,7 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
 
-    final nonNegotiables = _NonNegotiablesWidget(
+    final dailyHabits = DailyHabitsSection(
       habits: habitListAsync.valueOrNull ?? const <Habit>[],
       checked: checkedAsync.valueOrNull ?? const <String>{},
       streak: streakAsync.valueOrNull ?? 0,
@@ -154,37 +155,43 @@ class DashboardScreen extends ConsumerWidget {
 
     const briefing = CollapsibleBriefing();
 
-    // Wide windows read the sections as two columns rather than one very long
-    // one: the day's own state (habits, briefing) sits beside the work itself
-    // instead of being buried a screen below it.
+    // The dashboard is focused on daily action:
+    // 1. Daily habits (momentum, icons, checkoffs)
+    // 2. Today's tasks (actionable to-dos from goals)
+    // 3. Focus goals (roadmap progress)
+    // Secondary routine (schedule & briefing) is neatly organized.
     final Widget content = context.isExpanded
         ? AdaptiveColumns(
             spacing: 28,
             main: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                goals,
+                dailyHabits,
                 SizedBox(height: gap),
                 todaysTasks,
                 SizedBox(height: gap),
-                schedule,
+                goals,
               ],
             ),
             side: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [nonNegotiables, SizedBox(height: gap), briefing],
+              children: [
+                schedule,
+                SizedBox(height: gap),
+                briefing,
+              ],
             ),
           )
         : Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              goals,
+              dailyHabits,
               SizedBox(height: gap),
               todaysTasks,
               SizedBox(height: gap),
-              schedule,
+              goals,
               SizedBox(height: gap),
-              nonNegotiables,
+              schedule,
               SizedBox(height: gap),
               briefing,
             ],
@@ -257,6 +264,7 @@ class _DashboardSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -503,215 +511,3 @@ class _ScheduleRowState extends ConsumerState<_ScheduleRow> {
   }
 }
 
-// ── Non-negotiables ───────────────────────────────────────
-
-class _NonNegotiablesWidget extends ConsumerWidget {
-  final List<Habit> habits;
-  final Set<String> checked;
-  final int streak;
-  const _NonNegotiablesWidget({
-    required this.habits,
-    required this.checked,
-    required this.streak,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final doneCount = habits.where((h) => checked.contains(h.uid)).length;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                'Non-negotiables',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (habits.isNotEmpty)
-              _Pill(label: '$doneCount/${habits.length}', color: cs.primary),
-            if (streak > 0) ...[
-              const SizedBox(width: 6),
-              _Pill(label: '🔥 $streak', color: const Color(0xFF34D399)),
-            ],
-            IconButton(
-              tooltip: 'Manage habits',
-              visualDensity: VisualDensity.compact,
-              onPressed: () => context.push('/habits'),
-              icon: Icon(Icons.tune_rounded, size: 18, color: cs.onSurfaceVariant),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        if (habits.isEmpty)
-          _AddHabitsPrompt(onTap: () => context.push('/habits'))
-        else
-          LayoutBuilder(
-            builder: (context, constraints) {
-              // Two per row once there is width for it; one when narrow, so a
-              // long habit name is not clipped to nothing.
-              final columns = constraints.maxWidth < 360 ? 1 : 2;
-              return GridView.count(
-                crossAxisCount: columns,
-                crossAxisSpacing: 10,
-                mainAxisSpacing: 10,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                childAspectRatio: columns == 1 ? 6.2 : 2.8,
-                children: [
-                  for (final habit in habits)
-                    _HabitTile(
-                      habit: habit,
-                      checked: checked.contains(habit.uid),
-                      onToggle: () => ref
-                          .read(todayHabitChecksProvider.notifier)
-                          .toggle(habit.uid),
-                    ),
-                ],
-              );
-            },
-          ),
-      ],
-    );
-  }
-}
-
-class _Pill extends StatelessWidget {
-  const _Pill({required this.label, required this.color});
-
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
-          color: color,
-        ),
-      ),
-    );
-  }
-}
-
-class _HabitTile extends StatelessWidget {
-  const _HabitTile({
-    required this.habit,
-    required this.checked,
-    required this.onToggle,
-  });
-
-  final Habit habit;
-  final bool checked;
-  final VoidCallback onToggle;
-
-  static const _done = Color(0xFF34D399);
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return Material(
-      color: checked
-          ? _done.withValues(alpha: 0.08)
-          : cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: onToggle,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: checked ? _done.withValues(alpha: 0.4) : cs.outline,
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                HabitIcons.resolve(habit.iconKey),
-                size: 18,
-                color: checked ? _done : cs.onSurfaceVariant,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  habit.label.isEmpty ? 'Unnamed habit' : habit.label,
-                  style: tt.bodySmall?.copyWith(
-                    fontWeight: FontWeight.w500,
-                    color: habit.label.isEmpty
-                        ? cs.onSurfaceVariant
-                        : cs.onSurface,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-              IgnorePointer(
-                child: AnimatedCheckbox(
-                  checked: checked,
-                  color: _done,
-                  size: 20,
-                  onToggle: () {},
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AddHabitsPrompt extends StatelessWidget {
-  const _AddHabitsPrompt({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: cs.outline),
-          color: cs.surfaceContainerHighest,
-        ),
-        child: Row(
-          children: [
-            Icon(Icons.add_circle_outline_rounded, color: cs.primary, size: 20),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'Add the few things you want to do every day',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-            ),
-            Icon(Icons.chevron_right_rounded, color: cs.onSurfaceVariant),
-          ],
-        ),
-      ),
-    );
-  }
-}

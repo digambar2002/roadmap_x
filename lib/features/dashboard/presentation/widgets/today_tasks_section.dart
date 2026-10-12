@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import 'package:flutter/services.dart';
+
 import '../../../../core/models/today_task.dart';
 import '../../../../shared/widgets/animated_checkbox.dart';
 import '../../../../shared/widgets/due_date_badge.dart';
@@ -24,6 +26,7 @@ class TodayTasksSection extends ConsumerWidget {
   static const int maxShown = 5;
 
   Future<void> _toggle(WidgetRef ref, TodayTaskContext ctx) async {
+    HapticFeedback.lightImpact();
     await TaskRepository.instance.toggleComplete(ctx.task.id);
     // ref throws if the widget was disposed while the write was in flight.
     if (!ref.context.mounted) return;

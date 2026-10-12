@@ -3,14 +3,41 @@ import 'package:flutter/material.dart';
 class AppColors {
   AppColors._();
 
-  // ── Dark Theme ──────────────────────────────────────────
-  static const darkBackground = Color(0xFF070B16);
-  static const darkSurface = Color(0xFF0D1426);
-  static const darkCard = Color(0xFF131C35);
-  static const darkBorder = Color(0xFF1D2B4E);
-  static const darkTextPrimary = Color(0xFFD8E2F5);
-  static const darkTextMuted = Color(0xFF5A6A92);
-  static const darkFaint = Color(0xFF1A2444);
+  // ── Classic Dark Theme (Midnight Deep Blue) ──────────────
+  static const classicDarkBackground = Color(0xFF070B16);
+  static const classicDarkSurface = Color(0xFF0D1426);
+  static const classicDarkCard = Color(0xFF131C35);
+  static const classicDarkBorder = Color(0xFF1D2B4E);
+  static const classicDarkTextPrimary = Color(0xFFD8E2F5);
+  static const classicDarkTextMuted = Color(0xFF5A6A92);
+  static const classicDarkFaint = Color(0xFF1A2444);
+
+  // ── Charcoal Dark Theme (Neutral Graphite / Slate) ────────
+  static const charcoalDarkBackground = Color(0xFF121214);
+  static const charcoalDarkSurface = Color(0xFF18181B);
+  static const charcoalDarkCard = Color(0xFF202024);
+  static const charcoalDarkBorder = Color(0xFF2E2E33);
+  static const charcoalDarkTextPrimary = Color(0xFFF4F4F6);
+  static const charcoalDarkTextMuted = Color(0xFF9CA3AF);
+  static const charcoalDarkFaint = Color(0xFF242429);
+
+  // ── Pure Black Dark Theme (OLED True Black) ───────────────
+  static const oledDarkBackground = Color(0xFF000000);
+  static const oledDarkSurface = Color(0xFF0A0A0C);
+  static const oledDarkCard = Color(0xFF141416);
+  static const oledDarkBorder = Color(0xFF242428);
+  static const oledDarkTextPrimary = Color(0xFFFFFFFF);
+  static const oledDarkTextMuted = Color(0xFF8E8E93);
+  static const oledDarkFaint = Color(0xFF1A1A1E);
+
+  // Default aliases (Classic for backward compatibility)
+  static const darkBackground = classicDarkBackground;
+  static const darkSurface = classicDarkSurface;
+  static const darkCard = classicDarkCard;
+  static const darkBorder = classicDarkBorder;
+  static const darkTextPrimary = classicDarkTextPrimary;
+  static const darkTextMuted = classicDarkTextMuted;
+  static const darkFaint = classicDarkFaint;
 
   // ── Light Theme ──────────────────────────────────────────
   static const lightBackground = Color(0xFFF5F7FF);

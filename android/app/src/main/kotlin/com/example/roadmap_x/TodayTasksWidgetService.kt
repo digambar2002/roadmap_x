@@ -74,13 +74,10 @@ class TodayTasksRemoteViewsFactory(private val context: Context) :
         val views = RemoteViews(context.packageName, R.layout.widget_task_item)
         views.setTextViewText(R.id.task_item_title, item.title)
 
-        // Goal Title / Tag
-        if (item.goalTitle.isNotEmpty()) {
-            views.setTextViewText(R.id.task_item_goal, item.goalTitle)
-            views.setViewVisibility(R.id.task_item_goal, View.VISIBLE)
-        } else {
-            views.setViewVisibility(R.id.task_item_goal, View.GONE)
-        }
+        // Goal Title / Subtitle (matching MS To Do layout)
+        val subtitle = if (item.goalTitle.isNotEmpty()) item.goalTitle else "Tasks"
+        views.setTextViewText(R.id.task_item_goal, subtitle)
+        views.setViewVisibility(R.id.task_item_goal, View.VISIBLE)
 
         // Status Badge
         when {

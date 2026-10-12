@@ -88,6 +88,71 @@ class NotificationService {
         macOS: darwin,
       ),
     );
+
+    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin>();
+    if (androidPlugin != null) {
+      final channels = [
+        const AndroidNotificationChannel(
+          'habit_reminders',
+          'Habit Reminders',
+          description: 'Reminders for daily habits',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'daily_reminder',
+          'Daily Reminder',
+          description: 'Daily goal progress reminder',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'schedule_events',
+          'Schedule Events',
+          description: 'Notifications for scheduled routines/events',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'schedule_prior',
+          'Upcoming Event Alerts',
+          description: '5-minute alerts before scheduled events',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'task_due',
+          'Task Due',
+          description: 'Task due date reminders',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'test_channel',
+          'Test Notifications',
+          description: 'For testing notification delivery',
+          importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+      ];
+      for (final channel in channels) {
+        await androidPlugin.createNotificationChannel(channel);
+      }
+    }
+
     _initialized = true;
   }
 
@@ -250,6 +315,87 @@ class NotificationService {
   Future<void> cancelDailyReminder() async {
     await Workmanager().cancelByTag('daily_reminder');
     await _plugin.cancel(1);
+  }
+
+  int _habitNotificationId(String habitUid) =>
+      10000 + (habitUid.hashCode.abs() % 40000);
+
+  Future<void> scheduleHabitReminder({
+    required String habitUid,
+    required String habitLabel,
+    required int hour,
+    required int minute,
+    List<int>? repeatDays,
+  }) async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) {
+      await init();
+    }
+    final granted = await requestPermission();
+    if (!granted) return;
+
+    final id = _habitNotificationId(habitUid);
+    await _plugin.cancel(id);
+
+    const details = NotificationDetails(
+      android: AndroidNotificationDetails(
+        'habit_reminders',
+        'Habit Reminders',
+        channelDescription: 'Reminders for daily habits',
+        importance: Importance.max,
+        priority: Priority.high,
+        channelShowBadge: true,
+        playSound: true,
+        enableVibration: true,
+        visibility: NotificationVisibility.public,
+        category: AndroidNotificationCategory.alarm,
+      ),
+      iOS: DarwinNotificationDetails(
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
+
+    final next = _nextDailyTime(hour, minute);
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        'Habit Reminder',
+        'Time for "$habitLabel"! Keep your streak going 🔥',
+        next,
+        details,
+        androidScheduleMode: AndroidScheduleMode.exact,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: 'habit:$habitUid',
+      );
+    } catch (e) {
+      debugPrint('Exact alarm failed for habit $habitLabel: $e');
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          'Habit Reminder',
+          'Time for "$habitLabel"! Keep your streak going 🔥',
+          next,
+          details,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: DateTimeComponents.time,
+          payload: 'habit:$habitUid',
+        );
+      } catch (e2) {
+        debugPrint('Inexact alarm failed for habit $habitLabel: $e2');
+      }
+    }
+  }
+
+  Future<void> cancelHabitReminder(String habitUid) async {
+    if (!_supportsNotifications) return;
+    final id = _habitNotificationId(habitUid);
+    await _plugin.cancel(id);
   }
 
   /// Sync schedule notifications - use workmanager as primary, fallback to zonedSchedule

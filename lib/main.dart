@@ -38,6 +38,7 @@ Future<void> main() async {
     debugPrintStack(stackTrace: stack);
   }
   await BackupService.instance.init();
+  await NotificationService.instance.init();
 
   final prefs = await SharedPreferences.getInstance();
 
@@ -184,11 +185,14 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       error: (_, __) => ThemeMode.dark,
     );
 
+    final darkStyle = DarkModeStyle.fromKey(settingsAsync.valueOrNull?.darkModeStyle);
+    final darkTheme = AppTheme.buildDark(darkStyle);
+
     return MaterialApp.router(
         title: 'RoadmapX',
         debugShowCheckedModeBanner: false,
         theme: AppTheme.light,
-        darkTheme: AppTheme.dark,
+        darkTheme: darkTheme,
         themeMode: themeMode,
         routerConfig: router,
         builder: (context, child) => Theme(

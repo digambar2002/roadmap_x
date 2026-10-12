@@ -72,6 +72,46 @@ final todayHabitChecksProvider =
   TodayHabitChecksNotifier.new,
 );
 
+final habitChecksForDateProvider =
+    FutureProvider.family<Set<String>, DateTime>((ref, date) async {
+  ref.watch(habitActivityTickProvider);
+  return ref.read(habitCheckinServiceProvider).getCheckedForDate(date);
+});
+
+final habitWeeklyProgressProvider =
+    FutureProvider<Map<String, int>>((ref) async {
+  ref.watch(habitActivityTickProvider);
+  final service = ref.read(habitCheckinServiceProvider);
+  final now = DateTime.now();
+  final counts = <String, int>{};
+
+  for (var i = 0; i < 7; i++) {
+    final d = now.subtract(Duration(days: i));
+    final checked = await service.getCheckedForDate(d);
+    for (final uid in checked) {
+      counts[uid] = (counts[uid] ?? 0) + 1;
+    }
+  }
+  return counts;
+});
+
+final habitCompletedDaysInWeekProvider =
+    FutureProvider.family<Set<String>, DateTime>((ref, weekStart) async {
+  ref.watch(habitActivityTickProvider);
+  final service = ref.read(habitCheckinServiceProvider);
+  final completed = <String>{};
+
+  for (var i = 0; i < 7; i++) {
+    final d = weekStart.add(Duration(days: i));
+    if (await service.isDayComplete(d)) {
+      final key =
+          '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+      completed.add(key);
+    }
+  }
+  return completed;
+});
+
 final habitStreakProvider = FutureProvider<int>((ref) async {
   ref.watch(habitActivityTickProvider);
   return ref.read(habitCheckinServiceProvider).getCurrentStreak();

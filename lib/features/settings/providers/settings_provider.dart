@@ -6,6 +6,7 @@ import '../../../core/services/synced_settings.dart';
 // Settings keys
 const _kUserName = 'user_name';
 const _kThemeMode = 'theme_mode'; // 'dark'|'light'|'system'
+const _kDarkModeStyle = 'dark_mode_style'; // 'classic'|'charcoal'|'oled'
 const _kDailyReminderEnabled = 'daily_reminder_enabled';
 const _kDailyReminderHour = 'daily_reminder_hour';
 const _kDailyReminderMinute = 'daily_reminder_minute';
@@ -28,6 +29,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     return SettingsState(
       userName: _prefs.getString(_kUserName) ?? 'there',
       themeMode: _prefs.getString(_kThemeMode) ?? 'dark',
+      darkModeStyle: _prefs.getString(_kDarkModeStyle) ?? 'charcoal',
       dailyReminderEnabled: _prefs.getBool(_kDailyReminderEnabled) ?? false,
       dailyReminderHour: _prefs.getInt(_kDailyReminderHour) ?? 9,
       dailyReminderMinute: _prefs.getInt(_kDailyReminderMinute) ?? 0,
@@ -50,6 +52,14 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
     if (current == null) return;
     await _prefs.setString(_kThemeMode, mode);
     state = AsyncData(current.copyWith(themeMode: mode));
+    await LocalChanges.instance.notify();
+  }
+
+  Future<void> setDarkModeStyle(String style) async {
+    final current = state.valueOrNull;
+    if (current == null) return;
+    await _prefs.setString(_kDarkModeStyle, style);
+    state = AsyncData(current.copyWith(darkModeStyle: style));
     await LocalChanges.instance.notify();
   }
 
@@ -89,6 +99,7 @@ class SettingsNotifier extends AsyncNotifier<SettingsState> {
 class SettingsState {
   final String userName;
   final String themeMode;
+  final String darkModeStyle;
   final bool dailyReminderEnabled;
   final int dailyReminderHour;
   final int dailyReminderMinute;
@@ -97,6 +108,7 @@ class SettingsState {
   const SettingsState({
     required this.userName,
     required this.themeMode,
+    this.darkModeStyle = 'charcoal',
     required this.dailyReminderEnabled,
     required this.dailyReminderHour,
     required this.dailyReminderMinute,
@@ -106,6 +118,7 @@ class SettingsState {
   SettingsState copyWith({
     String? userName,
     String? themeMode,
+    String? darkModeStyle,
     bool? dailyReminderEnabled,
     int? dailyReminderHour,
     int? dailyReminderMinute,
@@ -114,6 +127,7 @@ class SettingsState {
       SettingsState(
         userName: userName ?? this.userName,
         themeMode: themeMode ?? this.themeMode,
+        darkModeStyle: darkModeStyle ?? this.darkModeStyle,
         dailyReminderEnabled: dailyReminderEnabled ?? this.dailyReminderEnabled,
         dailyReminderHour: dailyReminderHour ?? this.dailyReminderHour,
         dailyReminderMinute: dailyReminderMinute ?? this.dailyReminderMinute,

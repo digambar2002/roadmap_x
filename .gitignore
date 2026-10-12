@@ -53,6 +53,7 @@ android/app/*.keystore
 libisar.dylib
 libisar*.so
 isar.dll
+libisar.dll
 
 # Supabase keys. The anon key is public by design and RLS is what protects the
 # data, but this repository is public: committing it invites strangers to burn
