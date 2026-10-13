@@ -93,14 +93,15 @@
     </LinearLayout>
 
     <!-- Subtle Hairline Header Divider -->
-    <View
+    <ImageView
         android:id="@+id/widget_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_below="@id/widget_header"
         android:layout_marginTop="6dp"
         android:layout_marginBottom="2dp"
-        android:background="#1AFFFFFF" />
+        android:background="#1AFFFFFF"
+        android:contentDescription="@null" />
 
     <!-- Tasks ListView -->
     <ListView

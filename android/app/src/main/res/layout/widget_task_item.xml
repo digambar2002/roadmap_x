@@ -90,12 +90,13 @@
     </LinearLayout>
 
     <!-- Subtle Line Divider between items -->
-    <View
+    <ImageView
         android:id="@+id/task_item_divider"
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginStart="44dp"
         android:layout_marginEnd="4dp"
-        android:background="#15FFFFFF" />
+        android:background="#15FFFFFF"
+        android:contentDescription="@null" />
 
 </LinearLayout>

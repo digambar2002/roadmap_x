@@ -57,6 +57,7 @@
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
                 <action android:name="com.example.roadmap_x.ACTION_COMPLETE_TASK" />
                 <action android:name="com.example.roadmap_x.ACTION_OPEN_TASK" />
+                <action android:name="com.example.roadmap_x.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

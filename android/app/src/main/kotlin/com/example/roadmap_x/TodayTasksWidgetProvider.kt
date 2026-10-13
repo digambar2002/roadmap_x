@@ -129,67 +129,71 @@ class TodayTasksWidgetProvider : AppWidgetProvider() {
             appWidgetManager: AppWidgetManager,
             appWidgetId: Int
         ) {
-            val views = RemoteViews(context.packageName, R.layout.widget_today_tasks)
+            try {
+                val views = RemoteViews(context.packageName, R.layout.widget_today_tasks)
 
-            // Bind RemoteViewsService to the ListView
-            val serviceIntent = Intent(context, TodayTasksWidgetService::class.java).apply {
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
-                data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                // Bind RemoteViewsService to the ListView
+                val serviceIntent = Intent(context, TodayTasksWidgetService::class.java).apply {
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+                }
+                views.setRemoteAdapter(R.id.widget_task_list, serviceIntent)
+                views.setEmptyView(R.id.widget_task_list, R.id.widget_empty_view)
+
+                val flagImmutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+
+                // Header & Add buttons -> Launch Today screen
+                val launchTodayIntent = Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    data = Uri.parse("roadmapx://roadmapx/today")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val todayPendingIntent = PendingIntent.getActivity(context, 0, launchTodayIntent, flagImmutable)
+                views.setOnClickPendingIntent(R.id.widget_header, todayPendingIntent)
+                views.setOnClickPendingIntent(R.id.widget_add_btn, todayPendingIntent)
+                views.setOnClickPendingIntent(R.id.widget_empty_view, todayPendingIntent)
+
+                // Refresh button -> Broadcast ACTION_REFRESH
+                val refreshIntent = Intent(context, TodayTasksWidgetProvider::class.java).apply {
+                    action = ACTION_REFRESH
+                }
+                val refreshPendingIntent = PendingIntent.getBroadcast(context, 1, refreshIntent, flagImmutable)
+                views.setOnClickPendingIntent(R.id.widget_refresh_btn, refreshPendingIntent)
+
+                // Settings button -> Launch Settings screen
+                val settingsIntent = Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    data = Uri.parse("roadmapx://roadmapx/settings")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val settingsPendingIntent = PendingIntent.getActivity(context, 2, settingsIntent, flagImmutable)
+                views.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
+
+                // Broadcast pending intent template for ListView items
+                val templateIntent = Intent(context, TodayTasksWidgetProvider::class.java)
+                val templateFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val itemPendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    100,
+                    templateIntent,
+                    templateFlags
+                )
+                views.setPendingIntentTemplate(R.id.widget_task_list, itemPendingIntent)
+
+                // Update widget and notify list
+                appWidgetManager.updateAppWidget(appWidgetId, views)
+                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_task_list)
+            } catch (e: Exception) {
+                android.util.Log.e("TodayTasksWidget", "Error updating widget $appWidgetId", e)
             }
-            views.setRemoteAdapter(R.id.widget_task_list, serviceIntent)
-            views.setEmptyView(R.id.widget_task_list, R.id.widget_empty_view)
-
-            val flagImmutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-
-            // Header & Add buttons -> Launch Today screen
-            val launchTodayIntent = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = Uri.parse("roadmapx://roadmapx/today")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val todayPendingIntent = PendingIntent.getActivity(context, 0, launchTodayIntent, flagImmutable)
-            views.setOnClickPendingIntent(R.id.widget_header, todayPendingIntent)
-            views.setOnClickPendingIntent(R.id.widget_add_btn, todayPendingIntent)
-            views.setOnClickPendingIntent(R.id.widget_empty_view, todayPendingIntent)
-
-            // Refresh button -> Broadcast ACTION_REFRESH
-            val refreshIntent = Intent(context, TodayTasksWidgetProvider::class.java).apply {
-                action = ACTION_REFRESH
-            }
-            val refreshPendingIntent = PendingIntent.getBroadcast(context, 1, refreshIntent, flagImmutable)
-            views.setOnClickPendingIntent(R.id.widget_refresh_btn, refreshPendingIntent)
-
-            // Settings button -> Launch Settings screen
-            val settingsIntent = Intent(context, MainActivity::class.java).apply {
-                action = Intent.ACTION_VIEW
-                data = Uri.parse("roadmapx://roadmapx/settings")
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            val settingsPendingIntent = PendingIntent.getActivity(context, 2, settingsIntent, flagImmutable)
-            views.setOnClickPendingIntent(R.id.widget_settings_btn, settingsPendingIntent)
-
-            // Broadcast pending intent template for ListView items
-            val templateIntent = Intent(context, TodayTasksWidgetProvider::class.java)
-            val templateFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
-            } else {
-                PendingIntent.FLAG_UPDATE_CURRENT
-            }
-            val itemPendingIntent = PendingIntent.getBroadcast(
-                context,
-                100,
-                templateIntent,
-                templateFlags
-            )
-            views.setPendingIntentTemplate(R.id.widget_task_list, itemPendingIntent)
-
-            // Update widget and notify list
-            appWidgetManager.updateAppWidget(appWidgetId, views)
-            appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_task_list)
         }
     }
 }

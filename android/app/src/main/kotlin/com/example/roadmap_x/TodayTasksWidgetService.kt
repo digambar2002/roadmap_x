@@ -68,57 +68,62 @@ class TodayTasksRemoteViewsFactory(private val context: Context) :
     override fun getCount(): Int = taskList.size
 
     override fun getViewAt(position: Int): RemoteViews? {
-        if (position !in taskList.indices) return null
-        val item = taskList[position]
+        try {
+            if (position !in taskList.indices) return null
+            val item = taskList[position]
 
-        val views = RemoteViews(context.packageName, R.layout.widget_task_item)
-        views.setTextViewText(R.id.task_item_title, item.title)
+            val views = RemoteViews(context.packageName, R.layout.widget_task_item)
+            views.setTextViewText(R.id.task_item_title, item.title)
 
-        // Goal Title / Subtitle (matching MS To Do layout)
-        val subtitle = if (item.goalTitle.isNotEmpty()) item.goalTitle else "Tasks"
-        views.setTextViewText(R.id.task_item_goal, subtitle)
-        views.setViewVisibility(R.id.task_item_goal, View.VISIBLE)
+            // Goal Title / Subtitle (matching MS To Do layout)
+            val subtitle = if (item.goalTitle.isNotEmpty()) item.goalTitle else "Tasks"
+            views.setTextViewText(R.id.task_item_goal, subtitle)
+            views.setViewVisibility(R.id.task_item_goal, View.VISIBLE)
 
-        // Status Badge
-        when {
-            item.isOverdue -> {
-                views.setTextViewText(R.id.task_item_badge, "Overdue")
-                views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_overdue)
-                views.setTextColor(R.id.task_item_badge, Color.parseColor("#FFE4E6"))
-                views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+            // Status Badge
+            when {
+                item.isOverdue -> {
+                    views.setTextViewText(R.id.task_item_badge, "Overdue")
+                    views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_overdue)
+                    views.setTextColor(R.id.task_item_badge, Color.parseColor("#FFE4E6"))
+                    views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+                }
+                item.isDueToday -> {
+                    views.setTextViewText(R.id.task_item_badge, "Today")
+                    views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_today)
+                    views.setTextColor(R.id.task_item_badge, Color.parseColor("#E0F2FE"))
+                    views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+                }
+                item.dueDateFormatted.isNotEmpty() -> {
+                    views.setTextViewText(R.id.task_item_badge, item.dueDateFormatted)
+                    views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_glass)
+                    views.setTextColor(R.id.task_item_badge, Color.parseColor("#C7D2FE"))
+                    views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+                }
+                else -> {
+                    views.setViewVisibility(R.id.task_item_badge, View.GONE)
+                }
             }
-            item.isDueToday -> {
-                views.setTextViewText(R.id.task_item_badge, "Today")
-                views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_today)
-                views.setTextColor(R.id.task_item_badge, Color.parseColor("#E0F2FE"))
-                views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+
+            // 1. Fill-in intent for Circle Check Button -> complete task
+            val completeIntent = Intent().apply {
+                action = TodayTasksWidgetProvider.ACTION_COMPLETE_TASK
+                putExtra(TodayTasksWidgetProvider.EXTRA_TASK_ID, item.id)
             }
-            item.dueDateFormatted.isNotEmpty() -> {
-                views.setTextViewText(R.id.task_item_badge, item.dueDateFormatted)
-                views.setInt(R.id.task_item_badge, "setBackgroundResource", R.drawable.widget_badge_glass)
-                views.setTextColor(R.id.task_item_badge, Color.parseColor("#C7D2FE"))
-                views.setViewVisibility(R.id.task_item_badge, View.VISIBLE)
+            views.setOnClickFillInIntent(R.id.task_item_check_btn, completeIntent)
+
+            // 2. Fill-in intent for Task Body -> open app to today view
+            val openIntent = Intent().apply {
+                action = TodayTasksWidgetProvider.ACTION_OPEN_TASK
+                putExtra(TodayTasksWidgetProvider.EXTRA_TASK_ID, item.id)
             }
-            else -> {
-                views.setViewVisibility(R.id.task_item_badge, View.GONE)
-            }
+            views.setOnClickFillInIntent(R.id.task_item_content, openIntent)
+
+            return views
+        } catch (e: Exception) {
+            android.util.Log.e("TodayTasksWidget", "Error in getViewAt($position)", e)
+            return null
         }
-
-        // 1. Fill-in intent for Circle Check Button -> complete task
-        val completeIntent = Intent().apply {
-            action = TodayTasksWidgetProvider.ACTION_COMPLETE_TASK
-            putExtra(TodayTasksWidgetProvider.EXTRA_TASK_ID, item.id)
-        }
-        views.setOnClickFillInIntent(R.id.task_item_check_btn, completeIntent)
-
-        // 2. Fill-in intent for Task Body -> open app to today view
-        val openIntent = Intent().apply {
-            action = TodayTasksWidgetProvider.ACTION_OPEN_TASK
-            putExtra(TodayTasksWidgetProvider.EXTRA_TASK_ID, item.id)
-        }
-        views.setOnClickFillInIntent(R.id.task_item_content, openIntent)
-
-        return views
     }
 
     override fun getLoadingView(): RemoteViews? = null
