@@ -75,15 +75,20 @@ flutter_launcher_icons:
   min_sdk_android: 21
   # Android masks the icon to a circle/squircle and composites it over this
   # colour, so the source needs padding around the artwork or the mask clips it.
-  adaptive_icon_background: "#FFFFFF"
-  # A separately padded source: the launcher mask would otherwise clip the
-  # plume and the map's curled corners off the full-bleed artwork.
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
   adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_foreground_inset: 8
 
   ios: true
   # iOS forbids transparency in app icons and will reject an alpha channel at
   # submission; this flattens it onto white instead.
   remove_alpha_ios: true
+
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#472BE6"
+    theme_color: "#472BE6"
 
   macos:
     generate: true
