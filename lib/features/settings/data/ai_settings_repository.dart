@@ -1,13 +1,15 @@
+import 'dart:async';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/local_changes.dart';
 
 class AiSettingsRepository {
   static const _keyApiKey = 'gemini_api_key';
   static const _keyModel = 'gemini_model';
-  static const _defaultModel = 'gemini-2.5-flash';
+  static const _defaultModel = 'gemini-3.8-flash';
   static const _allowedModels = {
-    'gemini-2.5-flash',
-    'gemini-2.5-pro',
+    'gemini-3.8-flash',
+    'gemini-3.1-pro-preview',
   };
 
   final SharedPreferences _prefs;
@@ -27,6 +29,15 @@ class AiSettingsRepository {
 
   String getModel() {
     final model = _prefs.getString(_keyModel);
+    // Automatically migrate deprecated 2.5 models
+    if (model == 'gemini-2.5-flash') {
+      unawaited(_prefs.setString(_keyModel, 'gemini-3.8-flash'));
+      return 'gemini-3.8-flash';
+    }
+    if (model == 'gemini-2.5-pro') {
+      unawaited(_prefs.setString(_keyModel, 'gemini-3.1-pro-preview'));
+      return 'gemini-3.1-pro-preview';
+    }
     if (model == null || !_allowedModels.contains(model)) {
       return _defaultModel;
     }

@@ -149,7 +149,7 @@ $pastedText
               msg.contains('not supported') ||
               msg.contains('unavailable'))) {
         throw GeminiException(
-          'Selected model is not available for this API key. Choose Gemini 2.5 Flash in Settings.',
+          'Selected model is not available for this API key. Choose Gemini 3.8 Flash in Settings.',
           debugDetails: details,
         );
       }
