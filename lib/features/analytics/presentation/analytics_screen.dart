@@ -10,6 +10,7 @@ import '../providers/activity_provider.dart';
 import '../providers/analytics_provider.dart';
 import '../../premium/presentation/premium_gate.dart';
 import '../../../core/layout/adaptive_page.dart';
+import '../../../shared/widgets/page_title.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -22,7 +23,8 @@ class AnalyticsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: AdaptivePage.wide(child: SafeArea(
+      body: AdaptivePage.wide(
+          child: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(analyticsDataProvider);
@@ -35,12 +37,7 @@ class AnalyticsScreen extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 24, 20, 40),
               children: [
-                Text(
-                  'Stats',
-                  style: tt.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
-                ).animate().fadeIn(),
+                const PageTitle('Insights').animate().fadeIn(),
                 const SizedBox(height: 20),
                 PremiumLock(
                   title: 'Weekly AI review',

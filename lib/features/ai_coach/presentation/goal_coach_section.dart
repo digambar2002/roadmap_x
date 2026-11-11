@@ -55,7 +55,7 @@ class GoalCoachSection extends ConsumerWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: FilledButton.tonalIcon(
-                onPressed: () => context.go('/settings'),
+                onPressed: () => context.push('/settings'),
                 icon: const Icon(Icons.key_outlined, size: 18),
                 label: const Text('Add API key'),
               ),

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:confetti/confetti.dart';
@@ -11,6 +10,7 @@ import '../../../core/utils/progress_utils.dart';
 import '../../../shared/widgets/animated_checkbox.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/item_actions.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../ai_coach/presentation/adjust_plan_sheet.dart';
@@ -65,7 +65,8 @@ class _GoalDetailScreenState extends ConsumerState<GoalDetailScreen> {
       loading: () => Scaffold(
         backgroundColor: cs.background,
         appBar: AppBar(),
-        body: AdaptivePage(child: const Center(child: CircularProgressIndicator())),
+        body: AdaptivePage(
+            child: const Center(child: CircularProgressIndicator())),
       ),
       error: (e, _) => Scaffold(
         body: AdaptivePage(child: Center(child: Text('Error: $e'))),
@@ -113,7 +114,8 @@ class _GoalDetailBody extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: AdaptivePage(child: Stack(
+      body: AdaptivePage(
+          child: Stack(
         children: [
           CustomScrollView(
             slivers: [
@@ -153,24 +155,37 @@ class _GoalDetailBody extends ConsumerWidget {
                       builder: (_) => CreateEditGoalSheet(goal: goal),
                     ),
                   ),
-                  PopupMenuButton<String>(
-                    onSelected: (v) => _handleMenu(context, ref, v),
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'archive',
-                        child: Row(children: [
-                          const Icon(Icons.archive_outlined),
-                          const SizedBox(width: 8),
-                          Text(goal.isArchived ? 'Unarchive' : 'Archive'),
-                        ]),
+                  ItemActionsButton(
+                    title: goal.name,
+                    size: 24,
+                    actions: () => [
+                      ItemAction(
+                        label: 'Edit',
+                        icon: Icons.edit_outlined,
+                        onSelected: () => showAdaptiveSheet(
+                          context: context,
+                          isScrollControlled: true,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) => CreateEditGoalSheet(goal: goal),
+                        ),
                       ),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Row(children: [
-                          Icon(Icons.delete_outline, color: cs.error),
-                          const SizedBox(width: 8),
-                          Text('Delete', style: TextStyle(color: cs.error)),
-                        ]),
+                      ItemAction(
+                        label: 'Add milestone',
+                        icon: Icons.add_road_rounded,
+                        onSelected: () => _addMilestone(context),
+                      ),
+                      ItemAction(
+                        label: goal.isArchived ? 'Unarchive' : 'Archive',
+                        icon: goal.isArchived
+                            ? Icons.unarchive_outlined
+                            : Icons.archive_outlined,
+                        onSelected: () => _handleMenu(context, ref, 'archive'),
+                      ),
+                      ItemAction(
+                        label: 'Delete',
+                        icon: Icons.delete_outline,
+                        destructive: true,
+                        onSelected: () => _handleMenu(context, ref, 'delete'),
                       ),
                     ],
                   ),
@@ -263,6 +278,7 @@ class _GoalDetailBody extends ConsumerWidget {
       BuildContext context, WidgetRef ref, String action) async {
     if (action == 'archive') {
       if (goal.isArchived) {
+        if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
         await GoalRepository.instance.unarchive(goal.id);
       } else {
         await GoalRepository.instance.archive(goal.id);
@@ -489,10 +505,11 @@ class _MilestonesListState extends ConsumerState<_MilestonesList> {
             },
             itemBuilder: (context, i) {
               final ms = milestones[i];
-              return ReorderableDelayedDragStartListener(
+              return KeyedSubtree(
                 key: ValueKey(ms.id),
-                index: i,
                 child: _MilestoneCard(
+                  index: i,
+                  goalId: widget.goalId,
                   milestone: ms,
                   goalColor: widget.goalColor,
                   onComplete: widget.onMilestoneComplete,
@@ -513,6 +530,8 @@ class _MilestonesListState extends ConsumerState<_MilestonesList> {
 // ── Milestone card ────────────────────────────────────────
 
 class _MilestoneCard extends ConsumerWidget {
+  final int index;
+  final int goalId;
   final Milestone milestone;
   final Color goalColor;
   final VoidCallback onComplete;
@@ -520,6 +539,8 @@ class _MilestoneCard extends ConsumerWidget {
   final VoidCallback onToggle;
 
   const _MilestoneCard({
+    required this.index,
+    required this.goalId,
     required this.milestone,
     required this.goalColor,
     required this.onComplete,
@@ -534,21 +555,10 @@ class _MilestoneCard extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Slidable(
-        key: ValueKey(milestone.id),
-        endActionPane: ActionPane(
-          motion: const DrawerMotion(),
-          children: [
-            SlidableAction(
-              onPressed: (_) => _deleteMilestone(context),
-              backgroundColor: cs.error,
-              foregroundColor: Colors.white,
-              icon: Icons.delete_outline,
-              label: 'Delete',
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ],
-        ),
+      child: ItemSwipeActions(
+        itemKey: ValueKey(milestone.id),
+        onEdit: () => _editMilestone(context),
+        onDelete: () => _deleteMilestone(context),
         child: Container(
           decoration: BoxDecoration(
             color: cs.surfaceVariant,
@@ -563,6 +573,8 @@ class _MilestoneCard extends ConsumerWidget {
                 borderRadius:
                     const BorderRadius.vertical(top: Radius.circular(14)),
                 onTap: onToggle,
+                onLongPress: () => showItemActions(context,
+                    title: milestone.title, actions: _actions(context)),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: tasksAsync.when(
@@ -572,6 +584,8 @@ class _MilestoneCard extends ConsumerWidget {
                       expanded: isExpanded,
                       done: 0,
                       total: 0,
+                      index: index,
+                      actions: () => _actions(context),
                     ),
                     error: (_, __) => Text(milestone.title),
                     data: (tasks) {
@@ -583,6 +597,8 @@ class _MilestoneCard extends ConsumerWidget {
                         expanded: isExpanded,
                         done: done,
                         total: total,
+                        index: index,
+                        actions: () => _actions(context),
                       );
                     },
                   ),
@@ -617,6 +633,45 @@ class _MilestoneCard extends ConsumerWidget {
     );
   }
 
+  List<ItemAction> _actions(BuildContext context) => [
+        ItemAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onSelected: () => _editMilestone(context),
+        ),
+        ItemAction(
+          label: 'Add task',
+          icon: Icons.add_task_rounded,
+          onSelected: () => showAdaptiveSheet(
+            context: context,
+            isScrollControlled: true,
+            backgroundColor: Colors.transparent,
+            builder: (_) => CreateEditTaskSheet(
+              milestoneId: milestone.id,
+              goalColor: goalColor,
+            ),
+          ),
+        ),
+        ItemAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          destructive: true,
+          onSelected: () => _deleteMilestone(context),
+        ),
+      ];
+
+  void _editMilestone(BuildContext context) {
+    showAdaptiveSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CreateEditMilestoneSheet(
+        goalId: goalId,
+        milestone: milestone,
+      ),
+    );
+  }
+
   Future<void> _deleteMilestone(BuildContext context) async {
     final ok = await ConfirmationDialog.show(
       context,
@@ -636,6 +691,8 @@ class _MilestoneHeader extends StatelessWidget {
   final bool expanded;
   final int done;
   final int total;
+  final int index;
+  final List<ItemAction> Function() actions;
 
   const _MilestoneHeader({
     required this.milestone,
@@ -643,6 +700,8 @@ class _MilestoneHeader extends StatelessWidget {
     required this.expanded,
     required this.done,
     required this.total,
+    required this.index,
+    required this.actions,
   });
 
   @override
@@ -692,12 +751,12 @@ class _MilestoneHeader extends StatelessWidget {
                 color: goalColor,
               ),
             ),
-            const SizedBox(width: 8),
             Icon(
               expanded ? Icons.expand_less : Icons.expand_more,
               color: cs.onSurfaceVariant,
               size: 20,
             ),
+            ItemDragHandle(index: index),
           ],
         ),
         const SizedBox(height: 8),
@@ -743,10 +802,10 @@ class _TasksList extends ConsumerWidget {
           itemCount: tasks.length,
           itemBuilder: (context, i) {
             final task = tasks[i];
-            return ReorderableDelayedDragStartListener(
+            return KeyedSubtree(
               key: ValueKey(task.id),
-              index: i,
               child: _TaskRow(
+                index: i,
                 task: task,
                 goalColor: goalColor,
                 onComplete: onComplete,
@@ -791,11 +850,13 @@ class _TasksList extends ConsumerWidget {
 // ── Task row ──────────────────────────────────────────────
 
 class _TaskRow extends ConsumerWidget {
+  final int index;
   final Task task;
   final Color goalColor;
   final VoidCallback onComplete;
 
   const _TaskRow({
+    required this.index,
     required this.task,
     required this.goalColor,
     required this.onComplete,
@@ -806,22 +867,15 @@ class _TaskRow extends ConsumerWidget {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
 
-    return Slidable(
-      key: ValueKey(task.id),
-      endActionPane: ActionPane(
-        motion: const DrawerMotion(),
-        children: [
-          SlidableAction(
-            onPressed: (_) => _deleteTask(context),
-            backgroundColor: cs.error,
-            foregroundColor: Colors.white,
-            icon: Icons.delete_outline,
-            label: 'Delete',
-          ),
-        ],
-      ),
+    return ItemSwipeActions(
+      itemKey: ValueKey(task.id),
+      radius: 0,
+      onEdit: () => _openEdit(context),
+      onDelete: () => _deleteTask(context),
       child: InkWell(
         onTap: () => _openEdit(context),
+        onLongPress: () => showItemActions(context,
+            title: task.text, actions: _actions(context, ref)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           child: Row(
@@ -869,12 +923,34 @@ class _TaskRow extends ConsumerWidget {
                   child:
                       Icon(Icons.notes, size: 14, color: cs.onSurfaceVariant),
                 ),
+              ItemDragHandle(index: index),
             ],
           ),
         ),
       ),
     );
   }
+
+  List<ItemAction> _actions(BuildContext context, WidgetRef ref) => [
+        ItemAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onSelected: () => _openEdit(context),
+        ),
+        ItemAction(
+          label: task.isCompleted ? 'Mark as not done' : 'Mark as done',
+          icon: task.isCompleted
+              ? Icons.radio_button_unchecked_rounded
+              : Icons.check_circle_outline_rounded,
+          onSelected: () => _toggleTask(ref),
+        ),
+        ItemAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          destructive: true,
+          onSelected: () => _deleteTask(context),
+        ),
+      ];
 
   Future<void> _toggleTask(WidgetRef ref) async {
     final wasCompleted = task.isCompleted;

@@ -1,4 +1,4 @@
-package com.example.roadmap_x
+package com.naviwix.roadmapx
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -80,7 +80,15 @@ class TodayTasksWidgetProvider : AppWidgetProvider() {
                     newArray.put(obj)
                 }
             }
-            val newCount = newArray.length()
+            // Mirror Flutter's badge: overdue + due today + due this week.
+            var newCount = 0
+            for (i in 0 until newArray.length()) {
+                val obj = newArray.getJSONObject(i)
+                if (obj.optBoolean("isOverdue", false) ||
+                    obj.optBoolean("isDueToday", false) ||
+                    obj.optBoolean("isDueThisWeek", false)
+                ) newCount++
+            }
             widgetData.edit()
                 .putString("tasks_json", newArray.toString())
                 .putInt("task_count", newCount)
@@ -119,10 +127,10 @@ class TodayTasksWidgetProvider : AppWidgetProvider() {
     }
 
     companion object {
-        const val ACTION_COMPLETE_TASK = "com.example.roadmap_x.ACTION_COMPLETE_TASK"
-        const val ACTION_OPEN_TASK = "com.example.roadmap_x.ACTION_OPEN_TASK"
-        const val ACTION_REFRESH = "com.example.roadmap_x.ACTION_REFRESH"
-        const val EXTRA_TASK_ID = "com.example.roadmap_x.EXTRA_TASK_ID"
+        const val ACTION_COMPLETE_TASK = "com.naviwix.roadmapx.ACTION_COMPLETE_TASK"
+        const val ACTION_OPEN_TASK = "com.naviwix.roadmapx.ACTION_OPEN_TASK"
+        const val ACTION_REFRESH = "com.naviwix.roadmapx.ACTION_REFRESH"
+        const val EXTRA_TASK_ID = "com.naviwix.roadmapx.EXTRA_TASK_ID"
 
         fun updateAppWidget(
             context: Context,

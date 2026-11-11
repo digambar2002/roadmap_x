@@ -42,7 +42,9 @@ class MilestoneRepository {
     DateTime? dueDate,
   }) async {
     final goal = await _db.goals.get(goalId);
-    if (goal == null) throw Exception('Goal not found: $goalId');
+    if (goal == null || goal.deletedAt != null) {
+      throw StateError('Goal not found: $goalId');
+    }
 
     final ms = Milestone()
       ..uid = _uuid.v4()
@@ -64,10 +66,17 @@ class MilestoneRepository {
     return ms;
   }
 
-  Future<void> update(Milestone ms) async {
-    ms.updatedAt = DateTime.now();
+  /// Applies the editable fields of [edited] onto the current row so a stale
+  /// sheet cannot revert sort order or synced changes.
+  Future<void> update(Milestone edited) async {
+    final fresh = await getById(edited.id) ?? edited;
+    fresh
+      ..title = edited.title
+      ..theme = edited.theme
+      ..dueDate = edited.dueDate
+      ..updatedAt = DateTime.now();
     await _db.writeTxn(() async {
-      await _db.milestones.put(ms);
+      await _db.milestones.put(fresh);
     });
     await LocalChanges.instance.notify();
   }

@@ -3,18 +3,12 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../../core/db/isar_service.dart';
-import '../../../core/models/models.dart';
 import '../../../core/services/backup_service.dart';
 import '../../../core/services/data_export_service.dart';
 import '../../../core/services/notification_service.dart';
-import '../../../core/subscription/entitlements.dart';
-import '../../../core/sync/sync_service.dart';
-import '../../premium/providers/premium_provider.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../providers/backup_provider.dart';
@@ -25,7 +19,9 @@ import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/layout/breakpoints.dart';
 import '../../tasks/data/task_repository.dart';
-import '../../admin/providers/admin_provider.dart';
+import '../../goals/data/goal_repository.dart';
+import '../../schedule/data/schedule_repository.dart';
+import '../../../core/services/local_changes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/colors.dart';
 
@@ -60,27 +56,8 @@ class SettingsScreen extends ConsumerWidget {
               60,
             ),
             children: [
-              // ── Account ──────────────────────────────────
-              // Identity and sync first: it is the setting most likely to be
-              // wanted, and the one that explains why the others travel.
-              const _SectionHeader('Account'),
-              _NameField(
-                initialValue: settings.userName,
-                onChanged: notifier.setUserName,
-              ),
-              const SizedBox(height: 10),
-              const _PremiumTile(),
-              const _AdminTile(),
-
-              const SizedBox(height: 24),
-
-              // ── Routines & Habits ─────────────────────────
-              const _SectionHeader('Routines & Habits'),
-              const _HabitsTile(),
-              const SizedBox(height: 10),
-              const _ScheduleTile(),
-
-              const SizedBox(height: 24),
+              // Account, Premium, habits and schedule live on the Me tab.
+              // This screen is only the app's own settings.
 
               // ── Appearance ───────────────────────────────
               const _SectionHeader('Appearance'),
@@ -116,6 +93,7 @@ class SettingsScreen extends ConsumerWidget {
                     await NotificationService.instance.scheduleDailyReminder(
                       hour: hour,
                       minute: minute,
+                      interactive: true,
                     );
                   }
                 },
@@ -125,6 +103,9 @@ class SettingsScreen extends ConsumerWidget {
                   await NotificationService.instance.syncTaskDueNotifications(
                     tasks,
                     enabled: value,
+                    interactive: true,
+                    reminderHour: settings.dailyReminderHour,
+                    reminderMinute: settings.dailyReminderMinute,
                   );
                 },
               ),
@@ -186,13 +167,17 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (!ok2) return;
 
-    final db = IsarService.instance.db;
-    await db.writeTxn(() async {
-      await db.goals.clear();
-      await db.milestones.clear();
-      await db.tasks.clear();
-      await db.scheduleItems.clear();
+    // Soft deletes, not clear(): a hard wipe never reaches the server or
+    // other devices, so with sync on everything came straight back.
+    await BackupService.instance.withoutScheduling(() async {
+      for (final goal in await GoalRepository.instance.getAll()) {
+        await GoalRepository.instance.delete(goal.id);
+      }
+      for (final item in await ScheduleRepository.instance.getAll()) {
+        await ScheduleRepository.instance.delete(item.id);
+      }
     });
+    await LocalChanges.instance.notify();
 
     // Drop notifications scheduled for the records that no longer exist.
     await NotificationService.instance.syncScheduleNotifications(const []);
@@ -231,6 +216,7 @@ class SettingsScreen extends ConsumerWidget {
       await NotificationService.instance.scheduleDailyReminder(
         hour: settings?.dailyReminderHour ?? 9,
         minute: settings?.dailyReminderMinute ?? 0,
+        interactive: true,
       );
       await notifier.setDailyReminderEnabled(true);
       return;
@@ -266,7 +252,8 @@ class SettingsScreen extends ConsumerWidget {
       if (content == null || content.trim().isEmpty) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Selected file is empty or unreadable.')),
+            const SnackBar(
+                content: Text('Selected file is empty or unreadable.')),
           );
         }
         return;
@@ -276,6 +263,10 @@ class SettingsScreen extends ConsumerWidget {
         () => DataExportService.instance.importFromJson(content!),
       );
       await BackupService.instance.restorePreferences(result2.preferences);
+      // Imported tasks need their widget entry and due alerts right away,
+      // not on the next resume.
+      await LocalChanges.instance.notify();
+      if (!context.mounted) return;
       // Refresh everything that caches preference-backed state.
       _invalidateRestoredProviders(ref);
       if (context.mounted) {
@@ -316,89 +307,6 @@ void _invalidateRestoredProviders(WidgetRef ref) {
   bumpActivityTick(ref);
 }
 
-/// Admin entry, rendered only for accounts in `public.admins`.
-///
-/// The server checks this independently on every write, so hiding the tile is
-/// a convenience rather than the security boundary.
-class _AdminTile extends ConsumerWidget {
-  const _AdminTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin = ref.watch(isAdminProvider).valueOrNull ?? false;
-    if (!isAdmin) return const SizedBox.shrink();
-
-    final cs = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: _SettingsSurface(
-        child: ListTile(
-          leading: Icon(Icons.admin_panel_settings_outlined, color: cs.primary),
-          title: const Text(
-            'Manage subscriptions',
-            style: TextStyle(fontWeight: FontWeight.w600),
-          ),
-          subtitle: const Text('Activate or revoke other accounts'),
-          trailing: const Icon(Icons.chevron_right_rounded),
-          onTap: () => context.push('/admin'),
-        ),
-      ),
-    );
-  }
-}
-
-/// Entry point to the habits page, with a live count so the section says
-/// something even before it is opened.
-class _HabitsTile extends ConsumerWidget {
-  const _HabitsTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    final habits = ref.watch(habitsProvider).valueOrNull;
-    final count = habits?.length ?? 0;
-
-    return _SettingsSurface(
-      child: ListTile(
-        leading: Icon(Icons.check_circle_outline_rounded, color: cs.primary),
-        title: const Text(
-          'Habit Tracker',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(
-          count == 0
-              ? 'None yet — customize habits, colors and reminders'
-              : '$count habit${count == 1 ? '' : 's'} tracked daily',
-        ),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => context.push('/habits'),
-      ),
-    );
-  }
-}
-
-class _ScheduleTile extends ConsumerWidget {
-  const _ScheduleTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-
-    return _SettingsSurface(
-      child: ListTile(
-        leading: Icon(Icons.calendar_month_rounded, color: cs.primary),
-        title: const Text(
-          'Daily Schedule & Routines',
-          style: TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: const Text('Manage your daily time blocks and schedule'),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => context.push('/schedule'),
-      ),
-    );
-  }
-}
-
 class _SectionHeader extends StatelessWidget {
   final String title;
   const _SectionHeader(this.title);
@@ -416,51 +324,6 @@ class _SectionHeader extends StatelessWidget {
           color: cs.onSurfaceVariant,
           letterSpacing: 1.2,
         ),
-      ),
-    );
-  }
-}
-
-// ── Premium / sync entry ──────────────────────────────────
-
-class _PremiumTile extends ConsumerWidget {
-  const _PremiumTile();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    final isPremium = ref.watch(isPremiumProvider);
-    final isAvailable = ref.watch(syncAvailableProvider);
-    final status = ref.watch(syncStatusProvider).valueOrNull;
-
-    final String subtitle;
-    if (!isAvailable) {
-      subtitle = 'Not available in this build — the app stays local';
-    } else if (!isPremium) {
-      subtitle = 'Keep every device in step. Tap to activate.';
-    } else if (status?.stage == SyncStage.syncing) {
-      subtitle = 'Syncing…';
-    } else if (status?.stage == SyncStage.awaitingFirstSyncChoice) {
-      subtitle = 'Choose what to keep before syncing';
-    } else if (status?.stage == SyncStage.error) {
-      subtitle = 'Sync failed — will retry';
-    } else {
-      subtitle = 'Active on this device';
-    }
-
-    return _SettingsSurface(
-      child: ListTile(
-        leading: Icon(
-          isPremium ? Icons.cloud_done_rounded : Icons.cloud_sync_rounded,
-          color: isPremium ? cs.primary : cs.onSurfaceVariant,
-        ),
-        title: Text(
-          isPremium ? Entitlements.productName : 'Multi-device sync',
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        subtitle: Text(subtitle),
-        trailing: const Icon(Icons.chevron_right_rounded),
-        onTap: () => context.push('/premium'),
       ),
     );
   }
@@ -498,69 +361,6 @@ class _SettingsSurface extends StatelessWidget {
 }
 
 // ── Name field ────────────────────────────────────────────
-
-class _NameField extends StatefulWidget {
-  final String initialValue;
-  final ValueChanged<String> onChanged;
-  const _NameField({required this.initialValue, required this.onChanged});
-
-  @override
-  State<_NameField> createState() => _NameFieldState();
-}
-
-class _NameFieldState extends State<_NameField> {
-  late final TextEditingController _ctrl;
-  late final FocusNode _focus;
-
-  @override
-  void initState() {
-    super.initState();
-    _ctrl = TextEditingController(text: widget.initialValue);
-    _focus = FocusNode();
-    _focus.addListener(_onFocusChange);
-  }
-
-  void _onFocusChange() {
-    if (!_focus.hasFocus) {
-      final trimmed = _ctrl.text.trim();
-      if (trimmed != widget.initialValue) {
-        widget.onChanged(trimmed);
-      }
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _NameField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.initialValue != widget.initialValue &&
-        _ctrl.text != widget.initialValue &&
-        !_focus.hasFocus) {
-      _ctrl.text = widget.initialValue;
-    }
-  }
-
-  @override
-  void dispose() {
-    _focus.removeListener(_onFocusChange);
-    _focus.dispose();
-    _ctrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      controller: _ctrl,
-      focusNode: _focus,
-      decoration: const InputDecoration(
-        labelText: 'Your Name',
-        prefixIcon: Icon(Icons.person_outline),
-      ),
-      textCapitalization: TextCapitalization.words,
-      onFieldSubmitted: (v) => widget.onChanged(v.trim()),
-    );
-  }
-}
 
 // ── Theme tile ────────────────────────────────────────────
 
@@ -657,8 +457,10 @@ class _DarkModeStyleTile extends StatelessWidget {
                   border: Border.all(color: item.border, width: 2),
                 ),
               ),
-              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w500)),
-              subtitle: Text(item.subtitle, style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
+              title: Text(item.title,
+                  style: const TextStyle(fontWeight: FontWeight.w500)),
+              subtitle: Text(item.subtitle,
+                  style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant)),
               trailing: current == item.key
                   ? Icon(Icons.check_circle, color: cs.primary)
                   : null,
@@ -694,12 +496,14 @@ class _NotificationTile extends StatelessWidget {
 
   void _showTestNotification(BuildContext context) async {
     try {
-      await NotificationService.instance.showTestNotification();
+      final sent = await NotificationService.instance.showTestNotification();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Test notification sent! Check your device.'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(sent
+                ? 'Test notification sent! Check your device.'
+                : 'Notifications are disabled for RoadmapX in system settings.'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -714,12 +518,15 @@ class _NotificationTile extends StatelessWidget {
 
   void _showTestScheduledNotification(BuildContext context) async {
     try {
-      await NotificationService.instance.showTestScheduledNotification();
+      final sent =
+          await NotificationService.instance.showTestScheduledNotification();
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Scheduled test sent! Should appear in 10 seconds.'),
-            duration: Duration(seconds: 2),
+          SnackBar(
+            content: Text(sent
+                ? 'Scheduled test set! It should appear in 10 seconds, even with the app closed.'
+                : 'Notifications are disabled for RoadmapX in system settings.'),
+            duration: const Duration(seconds: 3),
           ),
         );
       }
@@ -773,6 +580,7 @@ class _NotificationTile extends StatelessWidget {
             value: taskDueNotificationsEnabled,
             onChanged: onTaskDueNotificationsChanged,
           ),
+          const _NotificationStatusRow(),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
             child: Column(
@@ -806,6 +614,89 @@ class _NotificationTile extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+/// Surfaces the two OS-level states that silently break reminders:
+/// notifications disabled for the app, and (Android 12+) exact alarms denied.
+class _NotificationStatusRow extends StatefulWidget {
+  const _NotificationStatusRow();
+
+  @override
+  State<_NotificationStatusRow> createState() => _NotificationStatusRowState();
+}
+
+class _NotificationStatusRowState extends State<_NotificationStatusRow>
+    with WidgetsBindingObserver {
+  NotificationStatus? _status;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The user may have just come back from the system settings page.
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
+  Future<void> _refresh() async {
+    try {
+      final status = await NotificationService.instance.status();
+      if (mounted) setState(() => _status = status);
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = _status;
+    if (status == null || !status.supported) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
+
+    if (!status.enabled) {
+      return ListTile(
+        leading: Icon(Icons.notifications_off_outlined, color: cs.error),
+        title: const Text('Notifications are blocked'),
+        subtitle: const Text(
+          'Allow notifications for RoadmapX in system settings, then return here.',
+        ),
+        trailing: TextButton(
+          onPressed: () async {
+            await NotificationService.instance.requestPermission();
+            await _refresh();
+          },
+          child: const Text('Allow'),
+        ),
+      );
+    }
+
+    if (!status.exactAlarms) {
+      return ListTile(
+        leading: Icon(Icons.alarm_off_outlined, color: cs.tertiary),
+        title: const Text('Exact timing is off'),
+        subtitle: const Text(
+          'Reminders may arrive late. Allow "Alarms & reminders" for RoadmapX.',
+        ),
+        trailing: TextButton(
+          onPressed: () async {
+            await NotificationService.instance.openExactAlarmSettings();
+            await _refresh();
+          },
+          child: const Text('Fix'),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 }
 
@@ -1033,6 +924,7 @@ class _AboutTile extends StatelessWidget {
     );
   }
 }
+
 class _AiConfigurationTile extends ConsumerStatefulWidget {
   const _AiConfigurationTile();
 
@@ -1169,7 +1061,8 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
                   if (hasKey)
                     IconButton(
                       tooltip: 'Remove key',
-                      icon: Icon(Icons.close_rounded, size: 18, color: cs.error),
+                      icon:
+                          Icon(Icons.close_rounded, size: 18, color: cs.error),
                       onPressed: _clear,
                     ),
                 ],
@@ -1203,4 +1096,3 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
     );
   }
 }
-

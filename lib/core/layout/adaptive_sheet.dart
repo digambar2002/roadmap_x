@@ -43,12 +43,24 @@ Future<T?> showAdaptiveSheet<T>({
   double dialogMaxWidth = 560,
 }) {
   if (!context.usesSideNav) {
+    // Sheets that paint their own rounded card pass Colors.transparent.
+    // Everything else gets a solid surface; defaulting to transparent made
+    // any sheet without its own background see-through over the page.
+    final paintsOwnSurface = backgroundColor == Colors.transparent;
+    final cs = Theme.of(context).colorScheme;
     return showModalBottomSheet<T>(
       context: context,
       isScrollControlled: isScrollControlled,
-      backgroundColor: backgroundColor ?? Colors.transparent,
-      shape: shape,
-      builder: (ctx) => AdaptiveSheetScope(isDialog: false, child: builder(ctx)),
+      backgroundColor: backgroundColor ?? cs.surface,
+      showDragHandle: !paintsOwnSurface,
+      shape: shape ??
+          (paintsOwnSurface
+              ? null
+              : const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                )),
+      builder: (ctx) =>
+          AdaptiveSheetScope(isDialog: false, child: builder(ctx)),
     );
   }
 

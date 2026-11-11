@@ -11,8 +11,38 @@ Future<int?> showGoalTemplateSheet(BuildContext context) {
   );
 }
 
-class _GoalTemplateSheet extends StatelessWidget {
+class _GoalTemplateSheet extends StatefulWidget {
   const _GoalTemplateSheet();
+
+  @override
+  State<_GoalTemplateSheet> createState() => _GoalTemplateSheetState();
+}
+
+class _GoalTemplateSheetState extends State<_GoalTemplateSheet> {
+  // createFromTemplate performs a dozen writes; a second tap while it runs
+  // would create the goal twice and skip the free-tier slot check.
+  bool _busy = false;
+
+  Future<void> _pick(GoalTemplate template) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final id = await GoalTemplateService.instance.createFromTemplate(
+        template: template,
+        colorHex: const Color(0xFF5B9CF6).value,
+        targetDate: DateTime.now().add(const Duration(days: 90)),
+      );
+      if (mounted) Navigator.pop(context, id);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not create goal: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,15 +62,8 @@ class _GoalTemplateSheet extends StatelessWidget {
               child: ListTile(
                 title: Text('${template.emoji} ${template.name}'),
                 subtitle: Text(template.description),
-                onTap: () async {
-                  final id =
-                      await GoalTemplateService.instance.createFromTemplate(
-                    template: template,
-                    colorHex: const Color(0xFF5B9CF6).value,
-                    targetDate: DateTime.now().add(const Duration(days: 90)),
-                  );
-                  if (context.mounted) Navigator.pop(context, id);
-                },
+                enabled: !_busy,
+                onTap: () => _pick(template),
               ),
             ),
           ),

@@ -172,9 +172,8 @@ Rules:
 
   Future<Map<String, dynamic>> _requestJson(String prompt) async {
     try {
-      final response = await _model
-          .generateContent([Content.text(prompt)])
-          .timeout(const Duration(seconds: 30));
+      final response = await _model.generateContent(
+          [Content.text(prompt)]).timeout(const Duration(seconds: 30));
       final raw = response.text;
       if (raw == null || raw.trim().isEmpty) {
         throw AiCoachException('AI returned an empty response.');
@@ -262,7 +261,10 @@ class WeeklyCoachReview {
   factory WeeklyCoachReview.fromJson(Map<String, dynamic> json) {
     List<String> toStringList(Object? value) {
       if (value is! List) return const [];
-      return value.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      return value
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     return WeeklyCoachReview(
@@ -313,7 +315,10 @@ class PlanAdjustment {
   factory PlanAdjustment.fromJson(Map<String, dynamic> json) {
     List<String> toStringList(Object? value) {
       if (value is! List) return const [];
-      return value.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList();
+      return value
+          .map((e) => e.toString().trim())
+          .where((e) => e.isNotEmpty)
+          .toList();
     }
 
     return PlanAdjustment(

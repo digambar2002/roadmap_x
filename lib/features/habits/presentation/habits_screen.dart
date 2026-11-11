@@ -6,20 +6,23 @@ import '../../../core/layout/adaptive_page.dart';
 import '../../../core/models/habit_icons.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/habit_customization_service.dart';
-import '../../../shared/widgets/animated_checkbox.dart';
 import '../../../shared/widgets/empty_state.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../providers/habit_provider.dart';
 import 'widgets/habit_calendar_row.dart';
 import 'widgets/habit_edit_sheet.dart';
+import 'widgets/habit_month_calendar.dart';
+import 'widgets/habit_row.dart';
+import '../../../shared/widgets/item_actions.dart';
 
 /// A modern, full-featured Habit Tracker screen.
 ///
 /// Features:
 /// - 7-day interactive calendar strip with selected day highlight
-/// - Top Habits weekly consistency progress bars
-/// - Filter chips (To Do, Completed, All)
-/// - Categorized sections (Morning, Workload, Night, Anytime)
+/// - Filter tabs (All, To Do, Completed, Analytics)
+/// - Categorized sections (Morning, Workload, Night, Anytime), only those
+///   that have habits
+/// - Analytics: every habit with its stats; tap one for a month calendar
 /// - Custom colors, icons, repeat rules, and notifications
 class HabitsScreen extends ConsumerStatefulWidget {
   const HabitsScreen({super.key});
@@ -30,17 +33,10 @@ class HabitsScreen extends ConsumerStatefulWidget {
 
 class _HabitsScreenState extends ConsumerState<HabitsScreen> {
   DateTime _selectedDate = DateTime.now();
-  String _filter = 'All'; // 'All', 'To Do', 'Completed'
+  String _filter = 'All'; // 'All', 'To Do', 'Completed', 'Analytics'
 
   DateTime get _normalizedSelectedDate =>
       DateTime(_selectedDate.year, _selectedDate.month, _selectedDate.day);
-
-  bool get _isViewingToday {
-    final now = DateTime.now();
-    return _selectedDate.year == now.year &&
-        _selectedDate.month == now.month &&
-        _selectedDate.day == now.day;
-  }
 
   Future<void> _toggleHabit(String habitUid, Set<String> currentChecked) async {
     HapticFeedback.lightImpact();
@@ -62,11 +58,10 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
 
     final habitsAsync = ref.watch(habitsProvider);
     ref.watch(habitCustomizationVersionProvider);
-    final checkedAsync = ref.watch(habitChecksForDateProvider(_normalizedSelectedDate));
+    final checkedAsync =
+        ref.watch(habitChecksForDateProvider(_normalizedSelectedDate));
     final streakAsync = ref.watch(habitStreakProvider);
-    final weeklyProgressAsync = ref.watch(habitWeeklyProgressProvider);
 
-    final now = DateTime.now();
     final startOfWeek = _normalizedSelectedDate
         .subtract(Duration(days: _normalizedSelectedDate.weekday - 1));
     final completedDaysAsync =
@@ -74,7 +69,6 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
 
     final streak = streakAsync.valueOrNull ?? 0;
     final checked = checkedAsync.valueOrNull ?? const <String>{};
-    final weeklyProgress = weeklyProgressAsync.valueOrNull ?? const <String, int>{};
     final completedDays = completedDaysAsync.valueOrNull ?? const <String>{};
 
     return Scaffold(
@@ -128,8 +122,7 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
                   child: EmptyState(
                     emoji: '🎯',
                     title: 'No habits yet',
-                    subtitle:
-                        'Build consistent routines with custom colors, '
+                    subtitle: 'Build consistent routines with custom colors, '
                         'repeat schedules, and daily reminders.',
                     buttonLabel: 'Add your first habit',
                     onButton: () => HabitEditSheet.show(context),
@@ -146,60 +139,56 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
                 children: [
-                  // ── Calendar Week Row ─────────────────────────────
-                  HabitCalendarRow(
-                    selectedDate: _selectedDate,
-                    onDateSelected: (date) {
-                      setState(() => _selectedDate = date);
-                    },
-                    completedDates: completedDays,
-                  ),
-                  const SizedBox(height: 16),
+                  // ── Calendar Week Row (day views only) ─────────────
+                  if (_filter != 'Analytics') ...[
+                    HabitCalendarRow(
+                      selectedDate: _selectedDate,
+                      onDateSelected: (date) {
+                        setState(() => _selectedDate = date);
+                      },
+                      completedDates: completedDays,
+                    ),
+                    const SizedBox(height: 16),
+                  ],
 
                   // ── Filter Tabs ───────────────────────────────────
+                  // Equal-width segments, so all four always fit on a phone.
                   Row(
                     children: [
-                      _FilterTab(
-                        label: 'All',
-                        isSelected: _filter == 'All',
-                        onTap: () => setState(() => _filter = 'All'),
-                      ),
-                      const SizedBox(width: 8),
-                      _FilterTab(
-                        label: 'To Do',
-                        isSelected: _filter == 'To Do',
-                        onTap: () => setState(() => _filter = 'To Do'),
-                      ),
-                      const SizedBox(width: 8),
-                      _FilterTab(
-                        label: 'Completed',
-                        isSelected: _filter == 'Completed',
-                        onTap: () => setState(() => _filter = 'Completed'),
-                      ),
+                      for (final (i, label) in const [
+                        'All',
+                        'To Do',
+                        'Completed',
+                        'Analytics',
+                      ].indexed) ...[
+                        if (i > 0) const SizedBox(width: 6),
+                        Expanded(
+                          child: _FilterTab(
+                            label: label,
+                            isSelected: _filter == label,
+                            onTap: () => setState(() => _filter = label),
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 16),
 
-                  // ── Top Habits Weekly Consistency ─────────────────
-                  if (habits.length >= 2) ...[
-                    _TopHabitsSection(
+                  // ── Analytics or categorized habits ────────────────
+                  if (_filter == 'Analytics')
+                    _HabitAnalyticsList(habits: habits)
+                  else
+                    _CategorizedHabitsList(
                       habits: habits,
-                      weeklyProgress: weeklyProgress,
+                      checked: checked,
+                      filter: _filter,
+                      selectedDate: _normalizedSelectedDate,
+                      onToggle: (uid) => _toggleHabit(uid, checked),
+                      onEdit: (habit) =>
+                          HabitEditSheet.show(context, habit: habit),
+                      onAddInCategory: (cat) =>
+                          HabitEditSheet.show(context, initialCategory: cat),
                     ),
-                    const SizedBox(height: 20),
-                  ],
-
-                  // ── Categorized Habits ────────────────────────────
-                  _CategorizedHabitsList(
-                    habits: habits,
-                    checked: checked,
-                    filter: _filter,
-                    selectedDate: _normalizedSelectedDate,
-                    onToggle: (uid) => _toggleHabit(uid, checked),
-                    onEdit: (habit) => HabitEditSheet.show(context, habit: habit),
-                    onAddInCategory: (cat) =>
-                        HabitEditSheet.show(context, initialCategory: cat),
-                  ),
                 ],
               ),
             );
@@ -236,7 +225,8 @@ class _FilterTab extends StatelessWidget {
       onTap: onTap,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 150),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 7),
+        alignment: Alignment.center,
         decoration: BoxDecoration(
           color: isSelected
               ? cs.primary
@@ -246,140 +236,19 @@ class _FilterTab extends StatelessWidget {
             color: isSelected ? cs.primary : cs.outline.withValues(alpha: 0.5),
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: isSelected ? Colors.white : cs.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// "Top Habits" section with weekly progress bars (6/7, 5/7) like reference image.
-class _TopHabitsSection extends StatelessWidget {
-  const _TopHabitsSection({
-    required this.habits,
-    required this.weeklyProgress,
-  });
-
-  final List<Habit> habits;
-  final Map<String, int> weeklyProgress;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-
-    // Pick top habits
-    final top = habits.take(3).toList();
-
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: cs.outline.withValues(alpha: 0.6)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Top Habits (This Week)',
-                style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              Text(
-                'Weekly Goal',
-                style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          for (final habit in top) ...[
-            _TopHabitRow(
-              habit: habit,
-              daysCompleted: weeklyProgress[habit.uid] ?? 0,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isSelected ? Colors.white : cs.onSurfaceVariant,
             ),
-            if (habit != top.last) const SizedBox(height: 10),
-          ],
-        ],
+          ),
+        ),
       ),
-    );
-  }
-}
-
-class _TopHabitRow extends ConsumerWidget {
-  const _TopHabitRow({
-    required this.habit,
-    required this.daysCompleted,
-  });
-
-  final Habit habit;
-  final int daysCompleted;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
-    final customAsync = ref.watch(habitCustomizationProvider(habit.uid));
-    final custom = customAsync.valueOrNull ?? const HabitCustomization();
-
-    final pct = (daysCompleted / 7).clamp(0.0, 1.0);
-
-    return Row(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: custom.color.withValues(alpha: 0.16),
-            shape: BoxShape.circle,
-          ),
-          child: Icon(
-            HabitIcons.resolve(habit.iconKey),
-            size: 18,
-            color: custom.color,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                habit.label.isEmpty ? 'Unnamed' : habit.label,
-                style: tt.bodySmall?.copyWith(fontWeight: FontWeight.w600),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              const SizedBox(height: 4),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: LinearProgressIndicator(
-                  value: pct,
-                  minHeight: 4,
-                  backgroundColor: cs.surfaceContainerHighest,
-                  valueColor: AlwaysStoppedAnimation<Color>(custom.color),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          '$daysCompleted/7',
-          style: tt.labelSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-            color: custom.color,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -407,6 +276,38 @@ class _CategorizedHabitsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     const categories = HabitCustomization.presetCategories;
+
+    // With empty sections hidden, make sure the list never goes silently
+    // blank: say why when nothing matches the selected day and filter.
+    final anyVisible = habits.any((h) {
+      final custom = ref.watch(habitCustomizationProvider(h.uid)).valueOrNull ??
+          const HabitCustomization();
+      if (!custom.isScheduledForWeekday(selectedDate.weekday)) return false;
+      final isDone = checked.contains(h.uid);
+      if (filter == 'To Do' && isDone) return false;
+      if (filter == 'Completed' && !isDone) return false;
+      return true;
+    });
+    if (!anyVisible) {
+      final cs = Theme.of(context).colorScheme;
+      final message = switch (filter) {
+        'To Do' => 'Everything is done for this day.',
+        'Completed' => 'Nothing completed yet for this day.',
+        _ => 'No habits scheduled for this day.',
+      };
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Center(
+          child: Text(
+            message,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: cs.onSurfaceVariant),
+          ),
+        ),
+      );
+    }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -460,6 +361,7 @@ class _CategoryGroup extends ConsumerWidget {
       final custom = ref.watch(habitCustomizationProvider(h.uid)).valueOrNull ??
           const HabitCustomization();
       if (custom.category == category) {
+        if (!custom.isScheduledForWeekday(selectedDate.weekday)) continue;
         final isDone = checked.contains(h.uid);
         if (filter == 'To Do' && isDone) continue;
         if (filter == 'Completed' && !isDone) continue;
@@ -467,7 +369,9 @@ class _CategoryGroup extends ConsumerWidget {
       }
     }
 
-    if (matched.isEmpty && filter != 'All') return const SizedBox.shrink();
+    // Only time-of-day sections that actually hold habits are shown; an
+    // empty "Night" or "Anytime" heading is just noise.
+    if (matched.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
@@ -513,171 +417,119 @@ class _CategoryGroup extends ConsumerWidget {
           ),
           const SizedBox(height: 6),
 
-          if (matched.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Text(
-                'No habits in $category yet',
-                style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-              ),
-            )
-          else
-            Column(
-              children: [
-                for (final habit in matched) ...[
-                  _HabitItemCard(
-                    habit: habit,
-                    isDone: checked.contains(habit.uid),
-                    onToggle: () => onToggle(habit.uid),
-                    onTap: () => onEdit(habit),
-                  ),
-                  const SizedBox(height: 8),
-                ],
+          Column(
+            children: [
+              for (final habit in matched) ...[
+                HabitRow(
+                  habit: habit,
+                  isDone: checked.contains(habit.uid),
+                  onToggle: () => onToggle(habit.uid),
+                ),
+                const SizedBox(height: 8),
               ],
-            ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _HabitItemCard extends ConsumerWidget {
-  const _HabitItemCard({
-    required this.habit,
-    required this.isDone,
-    required this.onToggle,
-    required this.onTap,
-  });
+/// The Analytics view: every habit with how it is going. Tapping one opens
+/// its month calendar.
+class _HabitAnalyticsList extends ConsumerWidget {
+  const _HabitAnalyticsList({required this.habits});
+
+  final List<Habit> habits;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Column(
+      children: [
+        for (final habit in habits) ...[
+          _HabitAnalyticsRow(habit: habit),
+          const SizedBox(height: 8),
+        ],
+      ],
+    );
+  }
+}
+
+class _HabitAnalyticsRow extends ConsumerWidget {
+  const _HabitAnalyticsRow({required this.habit});
 
   final Habit habit;
-  final bool isDone;
-  final VoidCallback onToggle;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final custom = ref.watch(habitCustomizationProvider(habit.uid)).valueOrNull ??
-        const HabitCustomization();
+    final custom =
+        ref.watch(habitCustomizationProvider(habit.uid)).valueOrNull ??
+            const HabitCustomization();
+    final done = ref.watch(habitCheckedDatesProvider(habit.uid)).valueOrNull ??
+        const <DateTime>{};
+    final stats = HabitStats.from(done, custom);
+    final color = custom.color;
 
-    final habitColor = custom.color;
-
-    return Material(
-      color: isDone
-          ? habitColor.withValues(alpha: 0.08)
-          : cs.surfaceContainerHighest,
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onToggle,
-        onLongPress: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: isDone
-                  ? habitColor.withValues(alpha: 0.45)
-                  : cs.outline.withValues(alpha: 0.7),
-              width: isDone ? 1.4 : 1,
-            ),
-          ),
-          child: Row(
-            children: [
-              // Habit Icon token with custom color (Tap icon to edit)
-              GestureDetector(
-                onTap: onTap,
-                child: Tooltip(
-                  message: 'Edit habit',
-                  child: Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: isDone
-                          ? habitColor
-                          : habitColor.withValues(alpha: 0.16),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      HabitIcons.resolve(habit.iconKey),
-                      size: 20,
-                      color: isDone ? Colors.white : habitColor,
-                    ),
+    return ItemSwipeActions(
+      itemKey: ValueKey('analytics-${habit.uid}'),
+      onEdit: () => HabitEditSheet.show(context, habit: habit),
+      onDelete: () => deleteHabit(context, ref, habit),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.7)),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          // In Analytics, opening a habit means opening its history.
+          onTap: () => HabitHistorySheet.show(context, habit),
+          onLongPress: () => showItemActions(context,
+              title: habit.label, actions: habitActions(context, ref, habit)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.16),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(HabitIcons.resolve(habit.iconKey),
+                      size: 20, color: color),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        habit.label.isEmpty ? 'Unnamed habit' : habit.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.w600),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '🔥 ${stats.currentStreak} day streak · '
+                        '${stats.thisMonth} this month',
+                        style: tt.labelSmall?.copyWith(
+                          color: cs.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-
-              // Title and Tags
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      habit.label.isEmpty ? 'Unnamed habit' : habit.label,
-                      style: tt.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                        color: isDone
-                            ? cs.onSurface.withValues(alpha: 0.6)
-                            : cs.onSurface,
-                        decoration: isDone ? TextDecoration.lineThrough : null,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Text(
-                          custom.repeatSummary,
-                          style: tt.labelSmall?.copyWith(
-                            color: cs.onSurfaceVariant,
-                            fontSize: 11,
-                          ),
-                        ),
-                        if (custom.hasReminder) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 1),
-                            decoration: BoxDecoration(
-                              color: habitColor.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.notifications_active_rounded,
-                                    size: 10, color: habitColor),
-                                const SizedBox(width: 3),
-                                Text(
-                                  custom.reminderFormatted,
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w600,
-                                    color: habitColor,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-
-              // Interactive Checkbox
-              AnimatedCheckbox(
-                checked: isDone,
-                color: habitColor,
-                size: 22,
-                onToggle: onToggle,
-              ),
-            ],
+                Icon(Icons.calendar_month_rounded,
+                    size: 20, color: cs.onSurfaceVariant),
+              ],
+            ),
           ),
         ),
       ),

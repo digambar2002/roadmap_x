@@ -36,7 +36,8 @@ class HabitCalendarRow extends StatelessWidget {
 
     // Compute the 7 days of the week containing selectedDate
     // Monday as start of week (weekday 1)
-    final startOfWeek = selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
+    final startOfWeek =
+        selectedDate.subtract(Duration(days: selectedDate.weekday - 1));
     final weekDays = List.generate(7, (i) {
       return DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day + i);
     });
@@ -79,7 +80,8 @@ class HabitCalendarRow extends StatelessWidget {
                 icon: const Icon(Icons.chevron_left_rounded),
                 onPressed: () {
                   HapticFeedback.selectionClick();
-                  onDateSelected(selectedDate.subtract(const Duration(days: 7)));
+                  onDateSelected(DateTime(selectedDate.year, selectedDate.month,
+                      selectedDate.day - 7));
                 },
               ),
               IconButton(
@@ -88,7 +90,8 @@ class HabitCalendarRow extends StatelessWidget {
                 icon: const Icon(Icons.chevron_right_rounded),
                 onPressed: () {
                   HapticFeedback.selectionClick();
-                  onDateSelected(selectedDate.add(const Duration(days: 7)));
+                  onDateSelected(DateTime(selectedDate.year, selectedDate.month,
+                      selectedDate.day + 7));
                 },
               ),
             ],
@@ -160,7 +163,9 @@ class _CalendarDayItem extends StatelessWidget {
         border: Border.all(
           color: isSelected
               ? cs.primary
-              : (isToday ? cs.primary.withValues(alpha: 0.4) : cs.outline.withValues(alpha: 0.6)),
+              : (isToday
+                  ? cs.primary.withValues(alpha: 0.4)
+                  : cs.outline.withValues(alpha: 0.6)),
           width: isSelected || isToday ? 1.5 : 1,
         ),
       ),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -161,6 +162,24 @@ class AccountService {
         ),
       );
 
+  /// Opens Google's consent page in the browser; the session arrives through
+  /// the deep link in [SyncConfig.oauthRedirectUri] and is picked up by
+  /// `onAuthStateChange`, so nothing else needs to happen here.
+  Future<void> signInWithGoogle() => _guard(() async {
+        final isMobile = defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.iOS;
+        final launched = await client.auth.signInWithOAuth(
+          OAuthProvider.google,
+          redirectTo: isMobile ? SyncConfig.oauthRedirectUri : null,
+          authScreenLaunchMode: isMobile
+              ? LaunchMode.externalApplication
+              : LaunchMode.platformDefault,
+        );
+        if (!launched) {
+          throw const AuthException('Could not open the Google sign-in page.');
+        }
+      });
+
   /// Signing out stops sync but never touches local data — the device keeps
   /// everything it has and carries on working offline.
   Future<void> signOut() => _guard(() => client.auth.signOut());
@@ -199,7 +218,8 @@ class AccountService {
 
       final active = row != null && row['is_premium'] == true;
       final until = DateTime.tryParse((row?['premium_until'] ?? '').toString());
-      final entitled = active && (until == null || until.isAfter(DateTime.now()));
+      final entitled =
+          active && (until == null || until.isAfter(DateTime.now()));
 
       await _cachePremium(entitled);
       _emit(_state.copyWith(isPremium: entitled, clearError: true));

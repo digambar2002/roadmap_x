@@ -6,7 +6,8 @@ import 'colors.dart';
 
 enum DarkModeStyle {
   classic('classic', 'Classic Midnight', 'Deep blue dark aesthetic'),
-  charcoal('charcoal', 'Charcoal Neutral', 'Minimal neutral dark, no blue tint'),
+  charcoal(
+      'charcoal', 'Charcoal Neutral', 'Minimal neutral dark, no blue tint'),
   oled('oled', 'Pure Black (OLED)', 'Pitch black with crisp contrast');
 
   final String key;

@@ -206,7 +206,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Tasks'), findsOneWidget);
     expect(find.text('All caught up'), findsOneWidget);
     expect(find.text('+ Pick Tasks from Goals'), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget);

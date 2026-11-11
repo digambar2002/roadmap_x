@@ -159,7 +159,7 @@ class _SetupPrompt extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () => context.go('/settings'),
+            onPressed: () => context.push('/settings'),
             child: const Text('Setup'),
           ),
         ],

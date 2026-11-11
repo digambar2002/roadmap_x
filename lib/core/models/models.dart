@@ -248,8 +248,7 @@ class HabitCheckin {
   DateTime? deletedAt;
   DateTime? syncedAt;
 
-  static String uidFor(String dayKey, String habitUid) =>
-      '$dayKey#$habitUid';
+  static String uidFor(String dayKey, String habitUid) => '$dayKey#$habitUid';
 }
 
 // ─────────────────────────────────────────────────────────

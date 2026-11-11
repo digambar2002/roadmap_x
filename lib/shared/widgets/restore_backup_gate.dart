@@ -17,7 +17,8 @@ class _RestoreBackupGateState extends State<RestoreBackupGate> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showRestoreToastIfNeeded());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _showRestoreToastIfNeeded());
   }
 
   Future<void> _showRestoreToastIfNeeded() async {

@@ -67,7 +67,8 @@ class TodayTasksGlassCard extends ConsumerWidget {
               // ── Header ───────────────────────────────────────────
               InkWell(
                 onTap: onHeaderTap,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
                   child: Row(
@@ -77,9 +78,11 @@ class TodayTasksGlassCard extends ConsumerWidget {
                         height: 32,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: const Color(0xFF6366F1).withValues(alpha: 0.20),
+                          color:
+                              const Color(0xFF6366F1).withValues(alpha: 0.20),
                           border: Border.all(
-                            color: const Color(0xFF818CF8).withValues(alpha: 0.50),
+                            color:
+                                const Color(0xFF818CF8).withValues(alpha: 0.50),
                             width: 1.2,
                           ),
                         ),
@@ -101,7 +104,9 @@ class TodayTasksGlassCard extends ConsumerWidget {
                               style: TextStyle(
                                 fontSize: 15,
                                 fontWeight: FontWeight.w700,
-                                color: isDark ? Colors.white : const Color(0xFF0F172A),
+                                color: isDark
+                                    ? Colors.white
+                                    : const Color(0xFF0F172A),
                                 letterSpacing: -0.2,
                               ),
                             ),
@@ -140,6 +145,7 @@ class TodayTasksGlassCard extends ConsumerWidget {
 
               // ── Task List / Empty State ──────────────────────────
               tasksAsync.when(
+                skipLoadingOnReload: true,
                 loading: () => const Padding(
                   padding: EdgeInsets.all(28.0),
                   child: Center(
@@ -152,7 +158,8 @@ class TodayTasksGlassCard extends ConsumerWidget {
                 ),
                 error: (e, _) => Padding(
                   padding: const EdgeInsets.all(16.0),
-                  child: Text('Error: $e', style: const TextStyle(fontSize: 12)),
+                  child:
+                      Text('Error: $e', style: const TextStyle(fontSize: 12)),
                 ),
                 data: (data) {
                   final tasks = [
@@ -163,7 +170,8 @@ class TodayTasksGlassCard extends ConsumerWidget {
 
                   if (tasks.isEmpty) {
                     return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 24, horizontal: 16),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -174,7 +182,9 @@ class TodayTasksGlassCard extends ConsumerWidget {
                             style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w600,
-                              color: isDark ? Colors.white : const Color(0xFF0F172A),
+                              color: isDark
+                                  ? Colors.white
+                                  : const Color(0xFF0F172A),
                             ),
                           ),
                           const SizedBox(height: 2),
@@ -225,7 +235,8 @@ class _CountBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = count == 0 ? 'All Clear ✨' : (count == 1 ? '1 task' : '$count tasks');
+    final text =
+        count == 0 ? 'All Clear ✨' : (count == 1 ? '1 task' : '$count tasks');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(

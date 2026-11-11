@@ -8,9 +8,10 @@ import 'package:roadmap_x/core/models/models.dart';
 import 'package:roadmap_x/core/services/shared_preferences_provider.dart';
 import 'package:roadmap_x/core/theme/app_theme.dart';
 import 'package:roadmap_x/features/ai_coach/presentation/daily_briefing_card.dart';
+import 'package:roadmap_x/features/ai_coach/providers/ai_coach_provider.dart';
+import 'package:roadmap_x/features/dashboard/presentation/widgets/daily_habits_section.dart';
 import 'package:roadmap_x/features/dashboard/presentation/dashboard_screen.dart';
 import 'package:roadmap_x/features/dashboard/presentation/widgets/collapsible_briefing.dart';
-import 'package:roadmap_x/features/dashboard/presentation/widgets/focus_goals_section.dart';
 import 'package:roadmap_x/core/layout/breakpoints.dart';
 import 'package:roadmap_x/features/dashboard/providers/dashboard_provider.dart';
 import 'package:roadmap_x/features/schedule/providers/schedule_provider.dart';
@@ -60,10 +61,24 @@ void main() {
     ..priority = priority
     ..updatedAt = DateTime(2026, 1, 1);
 
+  ScheduleItem makeScheduleItem() => ScheduleItem()
+    ..id = 1
+    ..uid = 's1'
+    ..label = 'Deep work'
+    ..detail = ''
+    ..time = '9:00 AM'
+    ..weekdays = [0, 1, 2, 3, 4, 5, 6]
+    ..goalUid = ''
+    ..isActive = true
+    ..sortOrder = 0
+    ..updatedAt = DateTime(2026, 1, 1);
+
   Future<void> pumpDashboard(
     WidgetTester tester, {
     required List<Goal> goals,
     Size window = const Size(430, 932),
+    bool hasAi = true,
+    List<ScheduleItem> schedule = const [],
   }) async {
     tester.view.physicalSize = window;
     tester.view.devicePixelRatio = 1.0;
@@ -81,7 +96,7 @@ void main() {
     final router = GoRouter(
       routes: [
         GoRoute(path: '/', builder: (_, __) => const DashboardScreen()),
-        for (final p in ['/today', '/analytics', '/goals', '/schedule'])
+        for (final p in ['/tasks', '/analytics', '/goals', '/schedule'])
           GoRoute(path: p, builder: (_, __) => const SizedBox.shrink()),
       ],
     );
@@ -103,8 +118,9 @@ void main() {
             ),
           ),
           habitStreakProvider.overrideWith((ref) async => 7),
+          hasAiCoachProvider.overrideWithValue(hasAi),
           scheduleForWeekdayProvider
-              .overrideWith((ref, weekday) => Stream.value(<ScheduleItem>[])),
+              .overrideWith((ref, weekday) => Stream.value(schedule)),
           scheduleCompletedUidsProvider
               .overrideWith((ref, date) async => <String>{}),
         ],
@@ -117,7 +133,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('renders its sections instead of a blank page', (tester) async {
+  testWidgets('renders the day instead of a blank page', (tester) async {
     await pumpDashboard(tester, goals: [
       makeGoal(1, 'Ship v1', GoalPriority.focus),
       makeGoal(2, 'Learn guitar', GoalPriority.active),
@@ -125,36 +141,56 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Digambar'), findsOneWidget, reason: 'greeting');
-    expect(find.text('Overdue'), findsOneWidget, reason: 'stat strip');
+    expect(find.text('Due today'), findsOneWidget, reason: 'task stat');
     expect(find.text('42%'), findsOneWidget, reason: 'progress stat');
-    expect(find.text('7'), findsOneWidget, reason: 'streak stat');
-    expect(find.text('Ship v1'), findsOneWidget, reason: 'focus goal');
-
-    // The briefing is last and starts closed. Its row is built (the sections
-    // share one scroll child so they can be re-flowed into columns) but it
-    // must sit below the fold, and the expensive card inside it must not be
-    // built at all until someone opens it.
-    final viewportHeight =
-        tester.view.physicalSize.height / tester.view.devicePixelRatio;
-    final briefingTop = tester.getTopLeft(find.text('Daily briefing')).dy;
-    expect(briefingTop, greaterThan(viewportHeight),
-        reason: 'briefing should not occupy the first screen');
-    expect(find.byType(DailyBriefingCard), findsNothing,
-        reason: 'collapsed briefing must not build the AI card');
-
-    await tester.drag(find.byType(ListView), const Offset(0, -900));
-    await tester.pumpAndSettle();
-    expect(find.text('Daily briefing'), findsOneWidget,
-        reason: 'briefing row is reachable by scrolling');
+    expect(find.text('7'), findsWidgets, reason: 'streak stat');
+    expect(find.text("Today's tasks"), findsOneWidget);
+    expect(find.byType(DailyHabitsSection), findsOneWidget);
+    expect(find.byType(FloatingActionButton), findsOneWidget,
+        reason: 'one entry point for creating things');
   });
 
-  testWidgets('renders with no goals at all', (tester) async {
-    await pumpDashboard(tester, goals: []);
+  testWidgets('long-term goals live on the Goals tab, not here',
+      (tester) async {
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
+    expect(find.text('Ship v1'), findsNothing);
+  });
 
+  testWidgets('the collapsed briefing does not build the AI card',
+      (tester) async {
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
+    await tester.drag(find.byType(ListView), const Offset(0, -900));
+    await tester.pumpAndSettle();
+    expect(find.text('Daily briefing'), findsOneWidget);
+    expect(find.byType(DailyBriefingCard), findsNothing);
+  });
+
+  testWidgets('no AI coach configured means no briefing card', (tester) async {
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)], hasAi: false);
+    expect(find.byType(CollapsibleBriefing), findsNothing);
+  });
+
+  testWidgets('a brand-new install gets one clear next step', (tester) async {
+    await pumpDashboard(tester, goals: []);
     expect(tester.takeException(), isNull);
-    expect(find.textContaining('Digambar'), findsOneWidget);
-    expect(find.text('Overdue'), findsOneWidget);
-    expect(find.text('No goals yet'), findsOneWidget);
+    expect(find.text('Start your roadmap'), findsOneWidget);
+    expect(find.text('Create a goal'), findsOneWidget);
+  });
+
+  testWidgets('the "+" button offers everything that can be created',
+      (tester) async {
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
+    await tester.tap(find.byType(FloatingActionButton));
+    await tester.pumpAndSettle();
+    for (final label in [
+      'Tasks for today',
+      'Habit',
+      'Goal',
+      'Goal with AI',
+      'Routine',
+    ]) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
   });
 
   testWidgets('reflows into two columns on a desktop window', (tester) async {
@@ -162,46 +198,59 @@ void main() {
       tester,
       goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)],
       window: const Size(1600, 1000),
+      schedule: [makeScheduleItem()],
     );
 
     expect(tester.takeException(), isNull);
 
-    final goals = tester.getTopLeft(find.byType(FocusGoalsSection));
-    final briefing = tester.getTopLeft(find.byType(CollapsibleBriefing));
-    expect(briefing.dx, greaterThan(goals.dx),
+    final tasks = tester.getTopLeft(find.text("Today's tasks"));
+    final schedule = tester.getTopLeft(find.text("Today's schedule"));
+    expect(schedule.dx, greaterThan(tasks.dx),
         reason: 'the secondary column sits beside the main one');
 
-    // Content is capped and centred rather than stretched across the window.
     final listWidth = tester.getSize(find.byType(ListView)).width;
     expect(listWidth, lessThanOrEqualTo(Breakpoints.wideMaxWidth));
     expect(tester.getTopLeft(find.byType(ListView)).dx, greaterThan(0));
+    // Let the staggered entrance animations finish before teardown.
+    await tester.pump(const Duration(seconds: 1));
   });
 
-  testWidgets('stays a single column on a phone window', (tester) async {
+  testWidgets("today's tasks sit above the schedule on a phone",
+      (tester) async {
     await pumpDashboard(
       tester,
       goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)],
+      schedule: [makeScheduleItem()],
     );
 
-    final goals = tester.getTopLeft(find.byType(FocusGoalsSection));
-    final briefing = tester.getTopLeft(find.byType(CollapsibleBriefing));
-    expect(briefing.dx, goals.dx);
-    expect(briefing.dy, greaterThan(goals.dy));
+    expect(tester.takeException(), isNull);
+    final tasks = tester.getTopLeft(find.text("Today's tasks"));
+    await tester.dragUntilVisible(
+      find.text("Today's schedule"),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    final schedule = tester.getTopLeft(find.text("Today's schedule"));
+    expect(tasks.dx, schedule.dx, reason: 'single column');
+    expect(tasks.dy, lessThan(schedule.dy));
+    await tester.pumpAndSettle();
   });
 
-  testWidgets("today's tasks sit above the schedule", (tester) async {
+  testWidgets('habits on Today have no calendar; that lives on the Habits tab',
+      (tester) async {
     await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
+    expect(find.text('Habits'), findsOneWidget);
+    expect(find.text('Mon'), findsNothing);
+  });
 
-    expect(tester.takeException(), isNull);
-    final tasks = tester.getTopLeft(find.text("Today's tasks")).dy;
-    final schedule = tester.getTopLeft(find.text("Today's schedule")).dy;
-    expect(tasks, lessThan(schedule),
-        reason: 'the work due today outranks the routine below it');
+  testWidgets('an empty schedule takes no space', (tester) async {
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
+    expect(find.text("Today's schedule"), findsNothing);
   });
 
   testWidgets('an empty task list still says so rather than vanishing',
       (tester) async {
-    await pumpDashboard(tester, goals: []);
+    await pumpDashboard(tester, goals: [makeGoal(1, 'Ship v1', GoalPriority.focus)]);
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Nothing due'), findsOneWidget);
   });

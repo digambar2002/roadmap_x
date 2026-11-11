@@ -29,7 +29,8 @@ class FocusScreen extends ConsumerWidget {
         title: const Text('Focus Mode'),
         backgroundColor: cs.background,
       ),
-      body: AdaptivePage(child: goalAsync.when(
+      body: AdaptivePage(
+          child: goalAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
         data: (goal) {

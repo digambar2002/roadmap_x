@@ -106,10 +106,20 @@ class GoalRepository {
     return goal;
   }
 
-  Future<void> update(Goal goal) async {
-    goal.updatedAt = DateTime.now();
+  /// Applies the editable fields of [edited] onto the current row so a stale
+  /// sheet cannot revert archive state, sort order or synced changes.
+  Future<void> update(Goal edited) async {
+    final fresh = await getById(edited.id) ?? edited;
+    fresh
+      ..name = edited.name
+      ..description = edited.description
+      ..emoji = edited.emoji
+      ..colorHex = edited.colorHex
+      ..targetDate = edited.targetDate
+      ..priority = edited.priority
+      ..updatedAt = DateTime.now();
     await _db.writeTxn(() async {
-      await _db.goals.put(goal);
+      await _db.goals.put(fresh);
     });
     await LocalChanges.instance.notify();
   }

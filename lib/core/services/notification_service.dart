@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -32,10 +34,18 @@ void callbackDispatcher() {
       }
       return true;
     } catch (e) {
-      print('Workmanager task error: $e');
+      debugPrint('Workmanager task error: $e');
       return false;
     }
   });
+}
+
+/// Called by the plugin when a notification is tapped while the app is
+/// terminated or in the background. Must be a top-level function.
+@pragma('vm:entry-point')
+void _onBackgroundNotificationResponse(NotificationResponse response) {
+  // Nothing to do here: the payload is re-read on the next launch through
+  // getNotificationAppLaunchDetails() and routed by the app.
 }
 
 class NotificationService {
@@ -46,7 +56,16 @@ class NotificationService {
   bool _initialized = false;
   static const _schedulePayloadPrefix = 'schedule:';
   static const _taskDuePayloadPrefix = 'task_due:';
+  static const _habitPayloadPrefix = 'habit:';
+  static const _dailyReminderPayload = 'daily_reminder';
   static const _dailyReminderId = 1;
+  static const _testNotificationId = 999;
+  static const _testScheduledNotificationId = 998;
+
+  /// Emits the payload of a notification the user tapped, so the app can
+  /// navigate to the matching screen.
+  final _tapController = StreamController<String>.broadcast();
+  Stream<String> get onNotificationTapped => _tapController.stream;
 
   static bool supportsNotificationsFor(TargetPlatform platform) =>
       platform == TargetPlatform.android ||
@@ -55,6 +74,25 @@ class NotificationService {
 
   static bool get _supportsNotifications =>
       supportsNotificationsFor(defaultTargetPlatform);
+
+  /// True where background scheduling is actually available. Workmanager ships
+  /// Android and iOS implementations only; calling it on desktop throws a
+  /// MissingPluginException.
+  static bool get _supportsWorkmanager =>
+      defaultTargetPlatform == TargetPlatform.android ||
+      defaultTargetPlatform == TargetPlatform.iOS;
+
+  AndroidFlutterLocalNotificationsPlugin? get _android =>
+      _plugin.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+
+  IOSFlutterLocalNotificationsPlugin? get _ios =>
+      _plugin.resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin>();
+
+  MacOSFlutterLocalNotificationsPlugin? get _macOS =>
+      _plugin.resolvePlatformSpecificImplementation<
+          MacOSFlutterLocalNotificationsPlugin>();
 
   Future<void> init() async {
     if (_initialized) return;
@@ -87,10 +125,17 @@ class NotificationService {
         iOS: darwin,
         macOS: darwin,
       ),
+      onDidReceiveNotificationResponse: (response) {
+        final payload = response.payload;
+        if (payload != null && payload.isNotEmpty) {
+          _tapController.add(payload);
+        }
+      },
+      onDidReceiveBackgroundNotificationResponse:
+          _onBackgroundNotificationResponse,
     );
 
-    final androidPlugin = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _android;
     if (androidPlugin != null) {
       final channels = [
         const AndroidNotificationChannel(
@@ -156,12 +201,18 @@ class NotificationService {
     _initialized = true;
   }
 
-  /// True where background scheduling is actually available. Workmanager ships
-  /// Android and iOS implementations only; calling it on desktop throws a
-  /// MissingPluginException.
-  static bool get _supportsWorkmanager =>
-      defaultTargetPlatform == TargetPlatform.android ||
-      defaultTargetPlatform == TargetPlatform.iOS;
+  /// Payload of the notification that launched the app, if any. Consumed by
+  /// the app once at startup to route to the right screen.
+  Future<String?> consumeLaunchPayload() async {
+    if (!_supportsNotifications) return null;
+    try {
+      final details = await _plugin.getNotificationAppLaunchDetails();
+      if (details?.didNotificationLaunchApp ?? false) {
+        return details!.notificationResponse?.payload;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   /// Initialize workmanager - call this in main.dart
   Future<void> initWorkmanager() async {
@@ -169,27 +220,34 @@ class NotificationService {
     await Workmanager().initialize(callbackDispatcher);
   }
 
-  Future<bool> requestPermission() async {
+  /// Whether the OS currently lets this app post notifications.
+  ///
+  /// With [interactive] (the default) the system permission prompt is shown
+  /// when permission has not been decided yet. Pass `interactive: false` from
+  /// startup / resume paths: those must never pop system dialogs or jump the
+  /// user into the alarm settings screen.
+  Future<bool> requestPermission({bool interactive = true}) async {
     if (!_supportsNotifications) return false;
+    if (!_initialized) await init();
 
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
+    final android = _android;
     if (android != null) {
-      final enabled = await android.areNotificationsEnabled();
-      if (enabled ?? false) {
-        await _requestExactAlarmPermission();
-        return true;
+      var enabled = await android.areNotificationsEnabled() ?? false;
+      if (!enabled && interactive) {
+        enabled = await android.requestNotificationsPermission() ?? false;
       }
-      final notifGranted =
-          await android.requestNotificationsPermission() ?? false;
-      if (notifGranted) {
-        await _requestExactAlarmPermission();
+      if (enabled && interactive) {
+        await _ensureExactAlarmPermission();
       }
-      return notifGranted;
+      return enabled;
     }
-    final ios = _plugin.resolvePlatformSpecificImplementation<
-        IOSFlutterLocalNotificationsPlugin>();
+
+    final ios = _ios;
     if (ios != null) {
+      if (!interactive) {
+        final current = await ios.checkPermissions();
+        return current?.isEnabled ?? false;
+      }
       return await ios.requestPermissions(
             alert: true,
             badge: true,
@@ -197,9 +255,13 @@ class NotificationService {
           ) ??
           false;
     }
-    final macOS = _plugin.resolvePlatformSpecificImplementation<
-        MacOSFlutterLocalNotificationsPlugin>();
+
+    final macOS = _macOS;
     if (macOS != null) {
+      if (!interactive) {
+        final current = await macOS.checkPermissions();
+        return current?.isEnabled ?? false;
+      }
       return await macOS.requestPermissions(
             alert: true,
             badge: true,
@@ -210,17 +272,96 @@ class NotificationService {
     return false;
   }
 
-  Future<void> _requestExactAlarmPermission() async {
-    final android = _plugin.resolvePlatformSpecificImplementation<
-        AndroidFlutterLocalNotificationsPlugin>();
-    if (android != null) {
-      try {
+  /// Android 12+ gates exact alarms behind a special-access setting. Only
+  /// send the user there when it is actually missing.
+  Future<void> _ensureExactAlarmPermission() async {
+    final android = _android;
+    if (android == null) return;
+    try {
+      final canExact = await android.canScheduleExactNotifications() ?? true;
+      if (!canExact) {
         await android.requestExactAlarmsPermission();
-      } catch (e) {
-        print('Could not request exact alarm permission: $e');
+      }
+    } catch (e) {
+      debugPrint('Could not request exact alarm permission: $e');
+    }
+  }
+
+  /// Picks the alarm mode the OS will honour. `exact` (without allowWhileIdle)
+  /// is deferred during Doze, which is exactly when a reminder matters.
+  Future<AndroidScheduleMode> _preferredScheduleMode() async {
+    final android = _android;
+    if (android == null) return AndroidScheduleMode.exactAllowWhileIdle;
+    try {
+      final canExact = await android.canScheduleExactNotifications() ?? true;
+      return canExact
+          ? AndroidScheduleMode.exactAllowWhileIdle
+          : AndroidScheduleMode.inexactAllowWhileIdle;
+    } catch (_) {
+      return AndroidScheduleMode.inexactAllowWhileIdle;
+    }
+  }
+
+  /// Single scheduling entry point: tries the preferred mode and falls back
+  /// to an inexact alarm if the OS refuses the exact one.
+  Future<void> _schedule({
+    required int id,
+    required String title,
+    required String body,
+    required tz.TZDateTime when,
+    required NotificationDetails details,
+    String? payload,
+    DateTimeComponents? repeat,
+  }) async {
+    final mode = await _preferredScheduleMode();
+    try {
+      await _plugin.zonedSchedule(
+        id,
+        title,
+        body,
+        when,
+        details,
+        payload: payload,
+        androidScheduleMode: mode,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: repeat,
+      );
+    } catch (e) {
+      if (mode == AndroidScheduleMode.inexactAllowWhileIdle) {
+        debugPrint('Scheduling notification $id failed: $e');
+        return;
+      }
+      try {
+        await _plugin.zonedSchedule(
+          id,
+          title,
+          body,
+          when,
+          details,
+          payload: payload,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+          uiLocalNotificationDateInterpretation:
+              UILocalNotificationDateInterpretation.absoluteTime,
+          matchDateTimeComponents: repeat,
+        );
+      } catch (e2) {
+        debugPrint('Scheduling notification $id failed: $e2');
       }
     }
   }
+
+  static const _dailyReminderDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'daily_reminder',
+      'Daily Reminder',
+      channelDescription: 'Daily goal progress reminder',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
 
   /// Schedule the daily reminder as a repeating zoned notification.
   /// (WorkManager periodic tasks reschedule relative to the previous run,
@@ -228,56 +369,29 @@ class NotificationService {
   Future<void> scheduleDailyReminder({
     required int hour,
     required int minute,
+    bool interactive = false,
   }) async {
     if (!_supportsNotifications) return;
-    if (!_initialized) {
-      await init();
-    }
+    if (!_initialized) await init();
 
-    final granted = await requestPermission();
+    final granted = await requestPermission(interactive: interactive);
     if (!granted) return;
 
     // Cancel the legacy workmanager-based reminder and any pending one.
-    await Workmanager().cancelByTag('daily_reminder');
+    if (_supportsWorkmanager) {
+      await Workmanager().cancelByTag('daily_reminder');
+    }
     await _plugin.cancel(_dailyReminderId);
 
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'daily_reminder',
-        'Daily Reminder',
-        channelDescription: 'Daily goal progress reminder',
-        importance: Importance.max,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
+    await _schedule(
+      id: _dailyReminderId,
+      title: 'RoadmapX Reminder',
+      body: 'Time to check on your goals! Keep the streak alive 🔥',
+      when: _nextDailyTime(hour, minute),
+      details: _dailyReminderDetails,
+      payload: _dailyReminderPayload,
+      repeat: DateTimeComponents.time,
     );
-
-    final next = _nextDailyTime(hour, minute);
-    try {
-      await _plugin.zonedSchedule(
-        _dailyReminderId,
-        'RoadmapX Reminder',
-        'Time to check on your goals! Keep the streak alive 🔥',
-        next,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exact,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-    } catch (_) {
-      await _plugin.zonedSchedule(
-        _dailyReminderId,
-        'RoadmapX Reminder',
-        'Time to check on your goals! Keep the streak alive 🔥',
-        next,
-        details,
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
-    }
   }
 
   tz.TZDateTime _nextDailyTime(int hour, int minute) {
@@ -293,123 +407,139 @@ class NotificationService {
 
   /// Show the daily reminder notification (called by workmanager or manually)
   Future<void> _showDailyReminderNotification() async {
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'daily_reminder',
-        'Daily Reminder',
-        channelDescription: 'Daily goal progress reminder',
-        importance: Importance.max,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-
     await _plugin.show(
-      1,
+      _dailyReminderId,
       'RoadmapX Reminder',
       'Time to check on your goals! Keep the streak alive 🔥',
-      details,
+      _dailyReminderDetails,
+      payload: _dailyReminderPayload,
     );
   }
 
   Future<void> cancelDailyReminder() async {
-    await Workmanager().cancelByTag('daily_reminder');
-    await _plugin.cancel(1);
+    if (!_supportsNotifications) return;
+    if (_supportsWorkmanager) {
+      await Workmanager().cancelByTag('daily_reminder');
+    }
+    await _plugin.cancel(_dailyReminderId);
   }
 
-  int _habitNotificationId(String habitUid) =>
+  // Habit reminders occupy ids 10000..50007. Each habit owns a block of 8:
+  // slot 0 for an every-day reminder, slots 1..7 for one weekday each
+  // (DateTime.monday..DateTime.sunday).
+  int _habitNotificationBase(String habitUid) =>
+      10000 + (habitUid.hashCode.abs() % 5000) * 8;
+
+  // Id used by builds before per-weekday reminders existed; cancelled so an
+  // upgrade does not leave a duplicate daily alarm behind.
+  int _legacyHabitNotificationId(String habitUid) =>
       10000 + (habitUid.hashCode.abs() % 40000);
 
+  static const _habitDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'habit_reminders',
+      'Habit Reminders',
+      channelDescription: 'Reminders for daily habits',
+      importance: Importance.max,
+      priority: Priority.high,
+      channelShowBadge: true,
+      playSound: true,
+      enableVibration: true,
+      visibility: NotificationVisibility.public,
+      category: AndroidNotificationCategory.reminder,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    ),
+    macOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentBadge: true,
+      presentSound: true,
+    ),
+  );
+
+  /// [repeatDays] uses DateTime's convention (1 = Monday … 7 = Sunday).
+  /// Null or all seven days means a daily reminder.
   Future<void> scheduleHabitReminder({
     required String habitUid,
     required String habitLabel,
     required int hour,
     required int minute,
     List<int>? repeatDays,
+    bool interactive = true,
   }) async {
     if (!_supportsNotifications) return;
-    if (!_initialized) {
-      await init();
-    }
-    final granted = await requestPermission();
+    if (!_initialized) await init();
+    final granted = await requestPermission(interactive: interactive);
     if (!granted) return;
 
-    final id = _habitNotificationId(habitUid);
-    await _plugin.cancel(id);
+    await cancelHabitReminder(habitUid);
 
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'habit_reminders',
-        'Habit Reminders',
-        channelDescription: 'Reminders for daily habits',
-        importance: Importance.max,
-        priority: Priority.high,
-        channelShowBadge: true,
-        playSound: true,
-        enableVibration: true,
-        visibility: NotificationVisibility.public,
-        category: AndroidNotificationCategory.alarm,
-      ),
-      iOS: DarwinNotificationDetails(
-        presentAlert: true,
-        presentBadge: true,
-        presentSound: true,
-      ),
-    );
+    final base = _habitNotificationBase(habitUid);
+    final title = 'Habit Reminder';
+    final body = 'Time for "$habitLabel"! Keep your streak going 🔥';
+    final payload = '$_habitPayloadPrefix$habitUid';
 
-    final next = _nextDailyTime(hour, minute);
-    try {
-      await _plugin.zonedSchedule(
-        id,
-        'Habit Reminder',
-        'Time for "$habitLabel"! Keep your streak going 🔥',
-        next,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exact,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'habit:$habitUid',
+    final days = (repeatDays ?? const [])
+        .where((d) => d >= DateTime.monday && d <= DateTime.sunday)
+        .toSet();
+    if (days.isEmpty || days.length == 7) {
+      await _schedule(
+        id: base,
+        title: title,
+        body: body,
+        when: _nextDailyTime(hour, minute),
+        details: _habitDetails,
+        payload: payload,
+        repeat: DateTimeComponents.time,
       );
-    } catch (e) {
-      debugPrint('Exact alarm failed for habit $habitLabel: $e');
-      try {
-        await _plugin.zonedSchedule(
-          id,
-          'Habit Reminder',
-          'Time for "$habitLabel"! Keep your streak going 🔥',
-          next,
-          details,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-          matchDateTimeComponents: DateTimeComponents.time,
-          payload: 'habit:$habitUid',
-        );
-      } catch (e2) {
-        debugPrint('Inexact alarm failed for habit $habitLabel: $e2');
-      }
+      return;
+    }
+
+    final now = tz.TZDateTime.now(tz.local);
+    for (final weekday in days) {
+      await _schedule(
+        id: base + weekday,
+        title: title,
+        body: body,
+        // _nextWeekdayTime expects Sunday = 0.
+        when: _nextWeekdayTime(weekday % 7, hour, minute, from: now),
+        details: _habitDetails,
+        payload: payload,
+        repeat: DateTimeComponents.dayOfWeekAndTime,
+      );
     }
   }
 
   Future<void> cancelHabitReminder(String habitUid) async {
     if (!_supportsNotifications) return;
-    final id = _habitNotificationId(habitUid);
-    await _plugin.cancel(id);
+    if (!_initialized) await init();
+    final base = _habitNotificationBase(habitUid);
+    for (var slot = 0; slot <= 7; slot++) {
+      await _plugin.cancel(base + slot);
+    }
+    await _plugin.cancel(_legacyHabitNotificationId(habitUid));
   }
 
-  /// Sync schedule notifications - use workmanager as primary, fallback to zonedSchedule
-  Future<void> syncScheduleNotifications(List<ScheduleItem> items) async {
+  /// Re-registers every weekly schedule notification from the current items.
+  ///
+  /// Called from startup and resume, so it never prompts for permission; the
+  /// prompt belongs to the user action that enabled notifications.
+  Future<void> syncScheduleNotifications(
+    List<ScheduleItem> items, {
+    bool interactive = false,
+  }) async {
     if (!_supportsNotifications) return;
-    if (!_initialized) {
-      await init();
-    }
-
-    final granted = await requestPermission();
-    if (!granted) return;
+    if (!_initialized) await init();
 
     await _cancelScheduleNotifications();
 
+    final granted = await requestPermission(interactive: interactive);
+    if (!granted) return;
+
+    final now = tz.TZDateTime.now(tz.local);
     for (final item in items) {
       if (!item.isActive || item.weekdays.isEmpty) continue;
 
@@ -417,12 +547,8 @@ class NotificationService {
       if (parsed == null) continue;
 
       for (final weekday in item.weekdays.toSet()) {
-        final next = _nextWeekdayTime(
-          weekday,
-          parsed.$1,
-          parsed.$2,
-          from: tz.TZDateTime.now(tz.local),
-        );
+        if (weekday < 0 || weekday > 6) continue;
+        final next = _nextWeekdayTime(weekday, parsed.$1, parsed.$2, from: now);
 
         // Bases spaced far enough apart that id ranges can't collide
         // (cancellation is payload-based, so re-basing is safe).
@@ -433,72 +559,81 @@ class NotificationService {
     }
   }
 
+  static const _taskDueDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'task_due',
+      'Task Due',
+      channelDescription: 'Task due date reminders',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
+
+  /// [reminderHour]/[reminderMinute] are used for due dates that carry no
+  /// time of day (the date picker stores midnight): "Due now" at 00:00 is
+  /// useless and a task due today would never be scheduled at all.
   Future<void> syncTaskDueNotifications(
     List<Task> tasks, {
     bool enabled = true,
+    bool interactive = false,
+    int reminderHour = 9,
+    int reminderMinute = 0,
   }) async {
     if (!_supportsNotifications) return;
-    if (!_initialized) {
-      await init();
-    }
+    if (!_initialized) await init();
     await _cancelTaskDueNotifications();
     if (!enabled) return;
 
-    final granted = await requestPermission();
+    final granted = await requestPermission(interactive: interactive);
     if (!granted) return;
+
+    final now = DateTime.now();
     for (final task in tasks) {
       if (task.isCompleted || task.dueDate == null) continue;
       final due = task.dueDate!;
-      if (!due.isAfter(DateTime.now())) continue;
+      final hasTime = due.hour != 0 || due.minute != 0;
+      final fireAt = hasTime
+          ? due
+          : DateTime(
+              due.year, due.month, due.day, reminderHour, reminderMinute);
+      if (!fireAt.isAfter(now)) continue;
 
-      final dueTz = tz.TZDateTime.from(due, tz.local);
-      final id = 300000000 + task.id;
-
-      try {
-        await _plugin.zonedSchedule(
-          id,
-          'Task due: ${task.text}',
-          'Due now',
-          dueTz,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'task_due',
-              'Task Due',
-              channelDescription: 'Task due date reminders',
-              importance: Importance.max,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
-          payload: '$_taskDuePayloadPrefix${task.id}',
-          androidScheduleMode: AndroidScheduleMode.exact,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
-      } catch (_) {
-        await _plugin.zonedSchedule(
-          id,
-          'Task due: ${task.text}',
-          'Due now',
-          dueTz,
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'task_due',
-              'Task Due',
-              channelDescription: 'Task due date reminders',
-              importance: Importance.max,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(),
-          ),
-          payload: '$_taskDuePayloadPrefix${task.id}',
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-          uiLocalNotificationDateInterpretation:
-              UILocalNotificationDateInterpretation.absoluteTime,
-        );
-      }
+      await _schedule(
+        id: 300000000 + task.id,
+        title: 'Task due: ${task.text}',
+        body: hasTime ? 'Due now' : 'Due today',
+        when: tz.TZDateTime.from(fireAt, tz.local),
+        details: _taskDueDetails,
+        payload: '$_taskDuePayloadPrefix${task.id}',
+      );
     }
   }
+
+  static const _scheduleEventDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'schedule_events',
+      'Schedule Events',
+      channelDescription: 'Notifications for scheduled routines/events',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
+
+  static const _schedulePriorDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'schedule_prior',
+      'Upcoming Event Alerts',
+      channelDescription: '5-minute alerts before scheduled events',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
 
   Future<void> _scheduleViaZonedSchedule(
     int eventId,
@@ -506,140 +641,47 @@ class NotificationService {
     ScheduleItem item,
     tz.TZDateTime next,
   ) async {
-    try {
-      await _plugin.zonedSchedule(
-        eventId,
-        item.label,
-        item.detail.isEmpty ? 'Scheduled event for now.' : item.detail,
-        next,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'schedule_events',
-            'Schedule Events',
-            channelDescription: 'Notifications for scheduled routines/events',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        payload: '$_schedulePayloadPrefix${item.id}:event',
-        androidScheduleMode: AndroidScheduleMode.exact,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
-    } catch (e) {
-      await _plugin.zonedSchedule(
-        eventId,
-        item.label,
-        item.detail.isEmpty ? 'Scheduled event for now.' : item.detail,
-        next,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'schedule_events',
-            'Schedule Events',
-            channelDescription: 'Notifications for scheduled routines/events',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        payload: '$_schedulePayloadPrefix${item.id}:event',
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
-    }
+    await _schedule(
+      id: eventId,
+      title: item.label,
+      body: item.detail.isEmpty ? 'Scheduled event for now.' : item.detail,
+      when: next,
+      details: _scheduleEventDetails,
+      payload: '$_schedulePayloadPrefix${item.id}:event',
+      repeat: DateTimeComponents.dayOfWeekAndTime,
+    );
 
     final prior = next.subtract(const Duration(minutes: 5));
     if (!prior.isAfter(tz.TZDateTime.now(tz.local))) return;
 
-    try {
-      await _plugin.zonedSchedule(
-        priorId,
-        'Upcoming: ${item.label}',
-        'Starts in 5 minutes',
-        prior,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'schedule_prior',
-            'Upcoming Event Alerts',
-            channelDescription: '5-minute alerts before scheduled events',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        payload: '$_schedulePayloadPrefix${item.id}:prior',
-        androidScheduleMode: AndroidScheduleMode.exact,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
-    } catch (_) {
-      await _plugin.zonedSchedule(
-        priorId,
-        'Upcoming: ${item.label}',
-        'Starts in 5 minutes',
-        prior,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'schedule_prior',
-            'Upcoming Event Alerts',
-            channelDescription: '5-minute alerts before scheduled events',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-          iOS: DarwinNotificationDetails(),
-        ),
-        payload: '$_schedulePayloadPrefix${item.id}:prior',
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dayOfWeekAndTime,
-      );
-    }
+    await _schedule(
+      id: priorId,
+      title: 'Upcoming: ${item.label}',
+      body: 'Starts in 5 minutes',
+      when: prior,
+      details: _schedulePriorDetails,
+      payload: '$_schedulePayloadPrefix${item.id}:prior',
+      repeat: DateTimeComponents.dayOfWeekAndTime,
+    );
   }
 
   /// Show event notification (called by workmanager or manually)
   Future<void> _showEventNotification(String label, String detail) async {
-    const notifDetails = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'schedule_events',
-        'Schedule Events',
-        channelDescription: 'Notifications for scheduled routines/events',
-        importance: Importance.max,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-
-    // Use a random ID to avoid collisions
-    final id = label.hashCode % 100000;
-    await _plugin.show(id, label, detail, notifDetails);
+    final id = label.hashCode.abs() % 100000;
+    await _plugin.show(id, label, detail, _scheduleEventDetails);
   }
 
   /// Show prior notification (called by workmanager or manually)
   Future<void> _showPriorNotification(String label) async {
-    const notifDetails = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'schedule_prior',
-        'Upcoming Event Alerts',
-        channelDescription: '5-minute alerts before scheduled events',
-        importance: Importance.max,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-
-    final id = (label.hashCode + 1) % 100000;
+    final id = (label.hashCode.abs() + 1) % 100000;
     await _plugin.show(
-        id, 'Upcoming: $label', 'Starts in 5 minutes', notifDetails);
+        id, 'Upcoming: $label', 'Starts in 5 minutes', _schedulePriorDetails);
   }
 
   Future<void> _cancelScheduleNotifications() async {
-    await Workmanager().cancelByTag('schedule_events');
+    if (_supportsWorkmanager) {
+      await Workmanager().cancelByTag('schedule_events');
+    }
     final pending = await _plugin.pendingNotificationRequests();
     for (final req in pending) {
       if (req.payload?.startsWith(_schedulePayloadPrefix) ?? false) {
@@ -681,6 +723,17 @@ class NotificationService {
         if (p == 'PM' && h != 12) h += 12;
         if (p == 'AM' && h == 12) h = 0;
         return (h, m);
+      }
+
+      // "9 AM" / "12PM" without minutes.
+      final hourOnly = RegExp(r'^(\d{1,2})\s*([AP]M)$').firstMatch(normalized);
+      if (hourOnly != null) {
+        var h = int.parse(hourOnly.group(1)!);
+        final p = hourOnly.group(2)!;
+        if (h < 1 || h > 12) return null;
+        if (p == 'PM' && h != 12) h += 12;
+        if (p == 'AM' && h == 12) h = 0;
+        return (h, 0);
       }
 
       final twentyFour =
@@ -739,50 +792,120 @@ class NotificationService {
     return candidate;
   }
 
-  /// Immediate notification for testing
-  Future<void> showTestNotification() async {
-    if (!_initialized) {
-      await init();
-    }
+  static const _testDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'test_channel',
+      'Test Notifications',
+      channelDescription: 'For testing notification delivery',
+      importance: Importance.max,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    ),
+    macOS: DarwinNotificationDetails(
+      presentAlert: true,
+      presentSound: true,
+    ),
+  );
 
-    const details = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'test_channel',
-        'Test Notifications',
-        channelDescription: 'For testing notification delivery',
-        importance: Importance.max,
-        priority: Priority.high,
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
-
-    await _plugin.show(
-      999,
-      'RoadmapX Test',
-      'If you see this, notifications are working! 🎉',
-      details,
-    );
-  }
-
-  /// Scheduled test notification (workmanager)
-  Future<void> showTestScheduledNotification() async {
-    if (!_initialized) {
-      await init();
-    }
+  /// Immediate notification for testing. Returns false when the OS has
+  /// notifications disabled for the app.
+  Future<bool> showTestNotification() async {
+    if (!_supportsNotifications) return false;
+    if (!_initialized) await init();
 
     final granted = await requestPermission();
-    if (!granted) return;
+    if (!granted) return false;
 
-    await Workmanager().registerOneOffTask(
-      'test_scheduled_${DateTime.now().millisecondsSinceEpoch}',
-      'schedule_event',
-      inputData: {
-        'label': 'RoadmapX Scheduled Test',
-        'detail': 'This notification was scheduled 10 seconds ago.',
-      },
-      initialDelay: const Duration(seconds: 10),
+    await _plugin.show(
+      _testNotificationId,
+      'RoadmapX Test',
+      'If you see this, notifications are working! 🎉',
+      _testDetails,
+    );
+    return true;
+  }
+
+  /// Scheduled test notification. Uses the same alarm path as the real
+  /// reminders so it proves that scheduled delivery works, not just show().
+  Future<bool> showTestScheduledNotification({
+    Duration delay = const Duration(seconds: 10),
+  }) async {
+    if (!_supportsNotifications) return false;
+    if (!_initialized) await init();
+
+    final granted = await requestPermission();
+    if (!granted) return false;
+
+    await _plugin.cancel(_testScheduledNotificationId);
+    await _schedule(
+      id: _testScheduledNotificationId,
+      title: 'RoadmapX Scheduled Test',
+      body: 'This notification was scheduled ${delay.inSeconds} seconds ago.',
+      when: tz.TZDateTime.now(tz.local).add(delay),
+      details: _testDetails,
+    );
+    return true;
+  }
+
+  /// Diagnostic snapshot for the settings screen.
+  Future<NotificationStatus> status() async {
+    if (!_supportsNotifications) {
+      return const NotificationStatus(
+        supported: false,
+        enabled: false,
+        exactAlarms: false,
+        pendingCount: 0,
+      );
+    }
+    if (!_initialized) await init();
+    final enabled = await requestPermission(interactive: false);
+    var exact = true;
+    final android = _android;
+    if (android != null) {
+      exact = await android.canScheduleExactNotifications() ?? true;
+    }
+    final pending = await _plugin.pendingNotificationRequests();
+    return NotificationStatus(
+      supported: true,
+      enabled: enabled,
+      exactAlarms: exact,
+      pendingCount: pending.length,
     );
   }
 
-  Future<void> cancelAll() => _plugin.cancelAll();
+  /// Opens the Android exact-alarm settings page when the permission is
+  /// missing; a no-op elsewhere.
+  Future<void> openExactAlarmSettings() => _ensureExactAlarmPermission();
+
+  /// Maps a tapped notification payload to the route that should open.
+  static String? routeForPayload(String payload) {
+    if (payload.startsWith(_habitPayloadPrefix)) return '/habits';
+    if (payload.startsWith(_schedulePayloadPrefix)) return '/schedule';
+    if (payload.startsWith(_taskDuePayloadPrefix)) return '/today';
+    if (payload == _dailyReminderPayload) return '/today';
+    return null;
+  }
+
+  Future<void> cancelAll() async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancelAll();
+  }
+}
+
+class NotificationStatus {
+  final bool supported;
+  final bool enabled;
+  final bool exactAlarms;
+  final int pendingCount;
+
+  const NotificationStatus({
+    required this.supported,
+    required this.enabled,
+    required this.exactAlarms,
+    required this.pendingCount,
+  });
 }

@@ -32,7 +32,8 @@ class PremiumScreen extends ConsumerWidget {
         elevation: 0,
         centerTitle: false,
       ),
-      body: AdaptivePage(child: ListView(
+      body: AdaptivePage(
+          child: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 60),
         children: [
           const _PerksCard(),
@@ -70,8 +71,8 @@ class _FirstSyncChoiceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final status =
-        ref.watch(syncStatusProvider).valueOrNull ?? SyncService.instance.status;
+    final status = ref.watch(syncStatusProvider).valueOrNull ??
+        SyncService.instance.status;
     if (status.stage != SyncStage.awaitingFirstSyncChoice) {
       return const SizedBox.shrink();
     }
@@ -317,6 +318,17 @@ class _SignInCardState extends ConsumerState<_SignInCard> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : Text(_isRegistering ? 'Create account' : 'Sign in'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: account.isBusy
+                  ? null
+                  : () => AccountService.instance.signInWithGoogle(),
+              icon: const Icon(Icons.g_mobiledata_rounded, size: 26),
+              label: const Text('Continue with Google'),
             ),
           ),
           TextButton(

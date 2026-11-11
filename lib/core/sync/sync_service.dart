@@ -100,7 +100,10 @@ class SyncService {
   SyncService._();
   static final SyncService instance = SyncService._();
 
-  static const _cursorKey = 'sync_pull_cursor';
+  // The pull cursor is per account: a cursor left behind by a previous
+  // sign-in would make a new account's existing rows look already pulled.
+  static const _cursorPrefix = 'sync_pull_cursor_';
+  String get _cursorKey => '$_cursorPrefix${_account.state.userId ?? ''}';
 
   /// Per-account marker: this device has already reconciled with this account,
   /// so later sign-ins go straight to syncing.
@@ -206,15 +209,47 @@ class SyncService {
   /// Starts the first sync for an account, asking first when that would mix
   /// two separate sets of data together.
   Future<void> _beginSync(String userId) async {
-    if (!_isInitialised(userId) && await _hasLocalData()) {
-      _emit(SyncStatus(
-        stage: SyncStage.awaitingFirstSyncChoice,
-        lastSyncedAt: _lastSyncedAt,
-      ));
-      return;
+    if (!_isInitialised(userId)) {
+      if (await _hasLocalData()) {
+        _emit(SyncStatus(
+          stage: SyncStage.awaitingFirstSyncChoice,
+          lastSyncedAt: _lastSyncedAt,
+        ));
+        return;
+      }
+      await _resetWatermarks();
     }
     await _markInitialised(userId);
     await syncNow();
+  }
+
+  /// Forgets that rows were ever sent. `syncedAt` describes the previous
+  /// account; for a new one every local row must count as dirty, otherwise
+  /// "keep both" pushes nothing.
+  Future<void> _resetWatermarks() async {
+    await _db.writeTxn(() async {
+      final goals = await _db.goals.where().findAll();
+      await _db.goals.putAll([for (final r in goals) r..syncedAt = null]);
+      final milestones = await _db.milestones.where().findAll();
+      await _db.milestones
+          .putAll([for (final r in milestones) r..syncedAt = null]);
+      final tasks = await _db.tasks.where().findAll();
+      await _db.tasks.putAll([for (final r in tasks) r..syncedAt = null]);
+      final schedule = await _db.scheduleItems.where().findAll();
+      await _db.scheduleItems
+          .putAll([for (final r in schedule) r..syncedAt = null]);
+      final habits = await _db.habits.where().findAll();
+      await _db.habits.putAll([for (final r in habits) r..syncedAt = null]);
+      final checkins = await _db.habitCheckins.where().findAll();
+      await _db.habitCheckins
+          .putAll([for (final r in checkins) r..syncedAt = null]);
+      final completions = await _db.scheduleCompletions.where().findAll();
+      await _db.scheduleCompletions
+          .putAll([for (final r in completions) r..syncedAt = null]);
+      final settings = await _db.appSettings.where().findAll();
+      await _db.appSettings
+          .putAll([for (final r in settings) r..syncedAt = null]);
+    });
   }
 
   /// Resolves the first-sign-in question and starts syncing.
@@ -228,8 +263,10 @@ class SyncService {
 
     if (choice == FirstSyncChoice.useAccountData) {
       await _clearLocalData();
-      await resetCursor();
+    } else {
+      await _resetWatermarks();
     }
+    await resetCursor();
     await _markInitialised(userId);
     await syncNow();
   }
@@ -274,7 +311,11 @@ class SyncService {
   }
 
   Future<void> _runSync() async {
-    if (!_account.state.canSync) return;
+    final userId = _account.state.userId;
+    if (!_account.state.canSync || userId == null) return;
+    // Nothing moves until the first-sync question has been answered; a local
+    // edit or a realtime event must not merge the two data sets behind it.
+    if (!_isInitialised(userId)) return;
     _emit(SyncStatus(stage: SyncStage.syncing, lastSyncedAt: _lastSyncedAt));
 
     try {
@@ -326,8 +367,9 @@ class SyncService {
     if (pending.isEmpty) return;
 
     for (var start = 0; start < pending.length; start += _pushChunk) {
-      final end =
-          start + _pushChunk < pending.length ? start + _pushChunk : pending.length;
+      final end = start + _pushChunk < pending.length
+          ? start + _pushChunk
+          : pending.length;
       final chunk = pending.sublist(start, end);
 
       await _account.client.from(SyncConfig.recordsTable).upsert(
@@ -339,7 +381,8 @@ class SyncService {
       // instead of re-sending everything next time.
       final confirmed = <String, Map<String, DateTime>>{};
       for (final row in chunk) {
-        confirmed.putIfAbsent(row.collection, () => {})[row.uid] = row.updatedAt;
+        confirmed.putIfAbsent(row.collection, () => {})[row.uid] =
+            row.updatedAt;
       }
       await _markSynced(confirmed);
     }
@@ -508,8 +551,7 @@ class SyncService {
       bucket.add(map);
 
       final uid = (row['uid'] ?? map['uid'] ?? '').toString();
-      final updatedAt =
-          DateTime.tryParse((row['updated_at'] ?? '').toString());
+      final updatedAt = DateTime.tryParse((row['updated_at'] ?? '').toString());
       if (uid.isEmpty || updatedAt == null) continue;
       incoming.putIfAbsent(collection, () => {})[uid] = updatedAt;
     }

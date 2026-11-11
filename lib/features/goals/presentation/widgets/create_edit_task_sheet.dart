@@ -57,6 +57,12 @@ class CreateEditTaskSheet extends HookConsumerWidget {
           );
         }
         if (context.mounted) Navigator.of(context).pop();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save: $e')),
+          );
+        }
       } finally {
         isSaving.value = false;
       }

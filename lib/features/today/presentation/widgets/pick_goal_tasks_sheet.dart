@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
@@ -88,7 +87,6 @@ class PickGoalTasksSheet extends HookConsumerWidget {
               await TaskRepository.instance
                   .setDueDates(selectedTaskIds.value.toList(), today);
               bumpActivityTick(ref);
-              ref.invalidate(todayTasksGroupedProvider);
               if (context.mounted) {
                 Navigator.of(context).maybePop(selectedTaskIds.value.length);
               }
@@ -444,9 +442,8 @@ class _GoalFilterChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w700,
-                  color: isSelected
-                      ? (color ?? cs.primary)
-                      : cs.onSurfaceVariant,
+                  color:
+                      isSelected ? (color ?? cs.primary) : cs.onSurfaceVariant,
                 ),
               ),
             ),
@@ -472,14 +469,11 @@ class _SelectableTaskTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final goalColor =
-        Color(taskCtx.goal?.colorHex ?? cs.primary.toARGB32());
+    final goalColor = Color(taskCtx.goal?.colorHex ?? cs.primary.toARGB32());
     final task = taskCtx.task;
 
     return Material(
-      color: isSelected
-          ? goalColor.withValues(alpha: 0.08)
-          : cs.surfaceVariant,
+      color: isSelected ? goalColor.withValues(alpha: 0.08) : cs.surfaceVariant,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -641,7 +635,6 @@ class _QuickCreateTaskForTodaySheet extends HookConsumerWidget {
           note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
         );
         bumpActivityTick(ref);
-        ref.invalidate(todayTasksGroupedProvider);
         if (context.mounted) {
           Navigator.of(context).pop(); // Close quick create
           Navigator.of(context).pop(1); // Close picker sheet with result 1
@@ -715,8 +708,7 @@ class _QuickCreateTaskForTodaySheet extends HookConsumerWidget {
                         tt.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 milestonesAsync.when(
-                  loading: () =>
-                      const Center(child: LinearProgressIndicator()),
+                  loading: () => const Center(child: LinearProgressIndicator()),
                   error: (e, _) => Text('Error: $e'),
                   data: (msList) {
                     if (msList.isEmpty) {
@@ -728,8 +720,8 @@ class _QuickCreateTaskForTodaySheet extends HookConsumerWidget {
                     return DropdownButtonFormField<int>(
                       value: selectedMilestoneId.value ?? msList.first.id,
                       decoration: const InputDecoration(
-                        contentPadding: EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 10),
+                        contentPadding:
+                            EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                       ),
                       items: msList.map((m) {
                         return DropdownMenuItem(

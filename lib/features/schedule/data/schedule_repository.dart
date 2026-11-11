@@ -20,6 +20,17 @@ class ScheduleRepository {
       .build()
       .watch(fireImmediately: true);
 
+  /// Every non-deleted item on [weekday], including paused ones. The schedule
+  /// screen uses this so a paused item can still be reached to edit/delete.
+  Stream<List<ScheduleItem>> watchForWeekdayIncludingInactive(int weekday) =>
+      _db.scheduleItems
+          .filter()
+          .deletedAtIsNull()
+          .weekdaysElementEqualTo(weekday)
+          .sortBySortOrder()
+          .build()
+          .watch(fireImmediately: true);
+
   Stream<List<ScheduleItem>> watchForWeekday(int weekday) => _db.scheduleItems
       .filter()
       .deletedAtIsNull()

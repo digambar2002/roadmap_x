@@ -2,6 +2,7 @@ import 'package:isar_community/isar.dart';
 
 import '../db/isar_service.dart';
 import '../models/models.dart';
+import 'habit_customization_service.dart';
 import 'local_changes.dart';
 
 /// Daily non-negotiables, stored one row per (day, habit).
@@ -30,6 +31,23 @@ class HabitCheckinService {
         .isCheckedEqualTo(true)
         .findAll();
     return rows.map((row) => row.habitUid).toSet();
+  }
+
+  /// Every day [habitUid] was ticked, as midnight dates. One indexed query
+  /// for the habit's whole history, used by the month calendar.
+  Future<Set<DateTime>> checkedDatesForHabit(String habitUid) async {
+    final rows = await _db.habitCheckins
+        .filter()
+        .habitUidEqualTo(habitUid)
+        .deletedAtIsNull()
+        .isCheckedEqualTo(true)
+        .findAll();
+    final dates = <DateTime>{};
+    for (final row in rows) {
+      final d = parseDayKey(row.dayKey);
+      if (d != null) dates.add(DateTime(d.year, d.month, d.day));
+    }
+    return dates;
   }
 
   Future<bool> isChecked(DateTime date, String habitUid) async {
@@ -70,26 +88,48 @@ class HabitCheckinService {
   /// Habits that were already defined on [day]. A habit added today is not
   /// expected on days before it existed, so adding one cannot retroactively
   /// break a streak.
-  static List<Habit> _expectedOn(List<Habit> habits, DateTime day) => habits
-      .where((h) => !h.createdAt.isAfter(day))
-      .toList();
+  ///
+  /// A habit restricted to certain weekdays (e.g. "Weekdays") is not expected
+  /// on the other days, otherwise Saturday could never be complete and the
+  /// streak would reset every Monday.
+  static List<Habit> _expectedOn(
+    List<Habit> habits,
+    DateTime day,
+    Map<String, HabitCustomization> meta,
+  ) =>
+      habits
+          .where((h) =>
+              !h.createdAt.isAfter(day) &&
+              (meta[h.uid] ?? const HabitCustomization())
+                  .isScheduledForWeekday(day.weekday))
+          .toList();
+
+  Future<Map<String, HabitCustomization>> _metaFor(List<Habit> habits) async {
+    final meta = <String, HabitCustomization>{};
+    for (final h in habits) {
+      try {
+        meta[h.uid] = await HabitCustomizationService.instance.get(h.uid);
+      } catch (_) {
+        // Preferences unavailable (e.g. background isolate): treat the habit
+        // as due every day rather than failing the whole computation.
+        meta[h.uid] = const HabitCustomization();
+      }
+    }
+    return meta;
+  }
 
   Future<bool> isDayComplete(DateTime date) async {
     final habits = await _activeHabits();
     final day = DateTime(date.year, date.month, date.day);
-    final expected = _expectedOn(habits, day);
+    final expected = _expectedOn(habits, day, await _metaFor(habits));
     if (expected.isEmpty) return false;
 
     final checked = await getCheckedForDate(date);
     return expected.every((h) => checked.contains(h.uid));
   }
 
-  Future<List<Habit>> _activeHabits() => _db.habits
-      .filter()
-      .deletedAtIsNull()
-      .sortBySortOrder()
-      .build()
-      .findAll();
+  Future<List<Habit>> _activeHabits() =>
+      _db.habits.filter().deletedAtIsNull().sortBySortOrder().build().findAll();
 
   /// Days on which every habit then defined was ticked.
   ///
@@ -98,6 +138,7 @@ class HabitCheckinService {
   Future<Set<String>> _completeDayKeys() async {
     final habits = await _activeHabits();
     if (habits.isEmpty) return <String>{};
+    final meta = await _metaFor(habits);
 
     final rows = await _db.habitCheckins
         .filter()
@@ -114,7 +155,7 @@ class HabitCheckinService {
     for (final entry in tickedPerDay.entries) {
       final day = parseDayKey(entry.key);
       if (day == null) continue;
-      final expected = _expectedOn(habits, day);
+      final expected = _expectedOn(habits, day, meta);
       if (expected.isEmpty) continue;
       if (expected.every((h) => entry.value.contains(h.uid))) {
         complete.add(entry.key);

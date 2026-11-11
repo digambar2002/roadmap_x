@@ -38,7 +38,34 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="roadmapx" />
             </intent-filter>
+            <!-- OAuth (Google) sign-in callback from Supabase -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.naviwix.roadmapx" android:host="login-callback" />
+            </intent-filter>
         </activity>
+
+        <!-- flutter_local_notifications: scheduled (zonedSchedule) alarms are
+             delivered to these receivers. Without them every scheduled
+             notification is silently dropped and only plugin.show() works. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ActionBroadcastReceiver"
+            android:exported="false" />
 
         <!-- HomeWidget Background Interactivity -->
         <receiver
@@ -55,9 +82,9 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="com.example.roadmap_x.ACTION_COMPLETE_TASK" />
-                <action android:name="com.example.roadmap_x.ACTION_OPEN_TASK" />
-                <action android:name="com.example.roadmap_x.ACTION_REFRESH" />
+                <action android:name="com.naviwix.roadmapx.ACTION_COMPLETE_TASK" />
+                <action android:name="com.naviwix.roadmapx.ACTION_OPEN_TASK" />
+                <action android:name="com.naviwix.roadmapx.ACTION_REFRESH" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"

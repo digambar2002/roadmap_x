@@ -8,7 +8,7 @@
 PRODUCT_NAME = roadmap_x
 
 // The application's bundle identifier
-PRODUCT_BUNDLE_IDENTIFIER = com.example.roadmapx
+PRODUCT_BUNDLE_IDENTIFIER = com.naviwix.roadmapx
 
 // The copyright displayed in application information
-PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+PRODUCT_COPYRIGHT = Copyright © 2026 Naviwix. All rights reserved.

@@ -33,12 +33,8 @@ final aiCoachServiceProvider = Provider<AiCoachService?>((ref) {
 class DailyBriefingNotifier extends AsyncNotifier<DailyBriefing?> {
   @override
   Future<DailyBriefing?> build() async {
-    ref.listen(hasAiCoachProvider, (previous, next) {
-      if (next == true && previous != true) {
-        refresh();
-      }
-    });
-
+    // Watching is enough: saving a key rebuilds this notifier. A listener on
+    // top of it fired a second, concurrent Gemini request.
     if (!ref.watch(hasAiCoachProvider)) return null;
 
     try {

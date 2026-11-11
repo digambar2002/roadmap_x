@@ -11,8 +11,8 @@ import 'package:roadmap_x/core/theme/app_theme.dart';
 import 'package:roadmap_x/features/onboarding/presentation/welcome_screen.dart';
 import 'package:roadmap_x/features/premium/providers/premium_provider.dart';
 
-/// The welcome screen's job is to ask the data question before any data
-/// exists, which is the only point at which it is cheap to answer.
+/// The welcome screen introduces the app and takes a name; signing in is an
+/// offer on the last page, not a question that blocks entry.
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -42,7 +42,7 @@ void main() {
       routes: [
         GoRoute(path: '/welcome', builder: (_, __) => const WelcomeScreen()),
         GoRoute(
-            path: '/dashboard',
+            path: '/today',
             builder: (_, __) => const Scaffold(body: Text('dashboard'))),
         GoRoute(
             path: '/premium',
@@ -70,44 +70,66 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('offers both paths on a first run', (tester) async {
-    await pump(tester);
-    expect(tester.takeException(), isNull);
-    expect(find.text('Start fresh'), findsOneWidget);
-    expect(find.text('I already have an account'), findsOneWidget);
-  });
+  Future<void> skipToSetup(WidgetTester tester) async {
+    await tester.tap(find.text('Skip'));
+    await tester.pumpAndSettle();
+  }
 
-  testWidgets('"start fresh" completes onboarding and opens the app',
+  testWidgets('walks through the intro slides to the set-up page',
       (tester) async {
     await pump(tester);
-    await tester.tap(find.text('Start fresh'));
+    expect(tester.takeException(), isNull);
+    expect(find.text('Goals that go somewhere'), findsOneWidget);
+    expect(find.text('Get started'), findsNothing);
+
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(find.text('Habits and a daily rhythm'), findsOneWidget);
+
+    await skipToSetup(tester);
+    expect(find.text('Get started'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Sign in with email'), findsOneWidget);
+  });
+
+  testWidgets('"Get started" saves the name, completes onboarding and opens '
+      'the app', (tester) async {
+    await pump(tester);
+    await skipToSetup(tester);
+    await tester.enterText(find.byType(TextField), 'Dee');
+    await tester.tap(find.text('Get started'));
     await tester.pumpAndSettle();
 
     expect(Onboarding.isComplete(prefs), isTrue);
+    expect(prefs.getString('user_name'), 'Dee');
     expect(find.text('dashboard'), findsOneWidget);
   });
 
-  testWidgets('"I already have an account" goes to sign-in', (tester) async {
+  testWidgets('"Sign in with email" goes to the account screen',
+      (tester) async {
     await pump(tester);
-    await tester.tap(find.text('I already have an account'));
+    await skipToSetup(tester);
+    await tester.tap(find.text('Sign in with email'));
     await tester.pumpAndSettle();
 
     expect(Onboarding.isComplete(prefs), isTrue);
     expect(find.text('account'), findsOneWidget);
   });
 
-  testWidgets('hides the sign-in path when no backend is configured',
+  testWidgets('hides the account options when no backend is configured',
       (tester) async {
     await pump(tester, syncConfigured: false);
-    expect(find.text('Start fresh'), findsOneWidget);
-    expect(find.text('I already have an account'), findsNothing,
+    await skipToSetup(tester);
+    expect(find.text('Get started'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsNothing,
         reason: 'there is nothing to sign in to');
+    expect(find.text('Sign in with email'), findsNothing);
   });
 
   testWidgets('the redirect holds the app on welcome until answered',
       (tester) async {
     await pump(tester);
-    expect(find.text('Start fresh'), findsOneWidget);
+    expect(find.text('Skip'), findsOneWidget);
     expect(find.text('dashboard'), findsNothing);
   });
 

@@ -140,7 +140,9 @@ class TaskRepository {
     String? note,
   }) async {
     final ms = await _db.milestones.get(milestoneId);
-    if (ms == null) throw Exception('Milestone not found: $milestoneId');
+    if (ms == null || ms.deletedAt != null) {
+      throw StateError('Milestone not found: $milestoneId');
+    }
 
     final now = DateTime.now();
     final task = Task()
@@ -166,10 +168,27 @@ class TaskRepository {
     return task;
   }
 
-  Future<void> update(Task task) async {
-    task.updatedAt = DateTime.now();
+  /// Applies the editable fields of [edited] onto the current row.
+  ///
+  /// The edit sheet holds the object it was opened with; writing that back
+  /// whole would undo anything that changed meanwhile (a completion from the
+  /// home-screen widget, a sync merge). Completion is only ever promoted here,
+  /// never reverted: un-completing goes through [toggle].
+  Future<void> update(Task edited) async {
+    final fresh = await getById(edited.id) ?? edited;
+    fresh
+      ..text = edited.text
+      ..priority = edited.priority
+      ..dueDate = edited.dueDate
+      ..note = edited.note;
+    if (edited.isCompleted && !fresh.isCompleted) {
+      fresh
+        ..isCompleted = true
+        ..completedAt = edited.completedAt ?? DateTime.now();
+    }
+    fresh.updatedAt = DateTime.now();
     await _db.writeTxn(() async {
-      await _db.tasks.put(task);
+      await _db.tasks.put(fresh);
     });
     await LocalChanges.instance.notify();
   }

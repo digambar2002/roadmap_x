@@ -6,6 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:workmanager/workmanager.dart';
 
+import '../sync/sync_service.dart';
 import 'data_export_service.dart';
 
 class BackupService {
@@ -99,10 +100,13 @@ class BackupService {
 
       final prefs = await SharedPreferences.getInstance();
       await _restorePreferences(prefs, imported.preferences, mode: mode);
-      await _secureStorage.write(
-        key: _restoreMarkerKey,
-        value: DateTime.now().toIso8601String(),
-      );
+      if (mode == ImportMode.replace) {
+        // Every restored row is dirty; re-read the account first so newer
+        // server rows win the merge instead of being overwritten.
+        await SyncService.instance.resetCursor();
+      }
+      // The settings screen shows its own confirmation; the launch marker is
+      // only for restores the user did not watch happen.
       return imported.counts;
     } catch (_) {
       return null;
@@ -142,14 +146,10 @@ class BackupService {
 
     final dir = await _backupSearchDirectory();
     if (dir == null || !await dir.exists()) return null;
-    final entries = dir
-        .listSync()
-        .whereType<File>()
-        .where((file) {
-          final name = file.uri.pathSegments.last.toLowerCase();
-          return name.contains('roadmapx') && name.endsWith('.json');
-        })
-        .toList()
+    final entries = dir.listSync().whereType<File>().where((file) {
+      final name = file.uri.pathSegments.last.toLowerCase();
+      return name.contains('roadmapx') && name.endsWith('.json');
+    }).toList()
       ..sort((a, b) => b.statSync().modified.compareTo(a.statSync().modified));
     if (entries.isEmpty) return null;
 
@@ -207,10 +207,22 @@ class BackupService {
   /// Secrets that must never leave the device in a plaintext backup file.
   static const _sensitivePreferenceKeys = {'gemini_api_key'};
 
+  /// Device-local bookkeeping. Restoring another device's cursor or
+  /// "already initialised" markers would make sync skip rows or skip the
+  /// first-sync question.
+  static bool _isInternalPreference(String key) =>
+      key.startsWith('sync_') ||
+      key == 'premium_entitlement_cached' ||
+      key == 'db_sync_schema_version' ||
+      key == 'onboarding_completed';
+
+  static bool _isExportable(String key) =>
+      !_sensitivePreferenceKeys.contains(key) && !_isInternalPreference(key);
+
   Map<String, dynamic> _exportablePreferences(SharedPreferences prefs) {
     final data = <String, dynamic>{};
     for (final key in prefs.getKeys()) {
-      if (_sensitivePreferenceKeys.contains(key)) continue;
+      if (!_isExportable(key)) continue;
       data[key] = prefs.get(key);
     }
     return data;
@@ -234,6 +246,7 @@ class BackupService {
     for (final entry in restored.entries) {
       final key = entry.key;
       final value = entry.value;
+      if (!_isExportable(key)) continue;
       if (value is bool) {
         await prefs.setBool(key, value);
       } else if (value is int) {

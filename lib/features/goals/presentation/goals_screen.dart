@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/models/models.dart';
@@ -12,6 +11,7 @@ import '../../premium/presentation/premium_gate.dart';
 import '../../../shared/widgets/progress_bar.dart';
 import '../../../shared/widgets/progress_ring.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
+import '../../../shared/widgets/item_actions.dart';
 import '../../ai_goal/presentation/ai_goal_sheet.dart';
 import '../../milestones/providers/milestone_provider.dart';
 import '../../tasks/providers/task_provider.dart';
@@ -34,7 +34,8 @@ class GoalsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: cs.background,
-      body: AdaptivePage(child: SafeArea(
+      body: AdaptivePage(
+          child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -55,12 +56,6 @@ class GoalsScreen extends ConsumerWidget {
                               ?.copyWith(fontWeight: FontWeight.w700)),
                       error: (_, __) => const Text('My Goals'),
                     ),
-                  ),
-                  // Settings icon goes to settings
-                  IconButton(
-                    icon: Icon(Icons.settings_outlined,
-                        color: cs.onSurfaceVariant),
-                    onPressed: () => context.push('/settings'),
                   ),
                 ],
               ),
@@ -304,6 +299,9 @@ class _GoalsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return ReorderableListView.builder(
+      // Long-press opens the options sheet, so dragging starts from the
+      // handle on each card instead.
+      buildDefaultDragHandles: false,
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: goals.length,
       proxyDecorator: (child, index, animation) => Material(
@@ -323,6 +321,7 @@ class _GoalsList extends ConsumerWidget {
           key: ValueKey(goal.id),
           child: _GoalCard(
             goal: goal,
+            index: i,
           ),
         );
       },
@@ -334,7 +333,48 @@ class _GoalsList extends ConsumerWidget {
 
 class _GoalCard extends ConsumerWidget {
   final Goal goal;
-  const _GoalCard({required this.goal});
+  final int index;
+  const _GoalCard({required this.goal, required this.index});
+
+  List<ItemAction> _actions(BuildContext context, WidgetRef ref) => [
+        ItemAction(
+          label: 'Open',
+          icon: Icons.open_in_new_rounded,
+          onSelected: () => context.push('/goals/${goal.id}'),
+        ),
+        ItemAction(
+          label: 'Edit',
+          icon: Icons.edit_outlined,
+          onSelected: () => _edit(context),
+        ),
+        ItemAction(
+          label: 'Focus mode',
+          icon: Icons.center_focus_strong_outlined,
+          onSelected: () => context.push('/focus/${goal.id}'),
+        ),
+        ItemAction(
+          label: goal.isArchived ? 'Unarchive' : 'Archive',
+          icon: goal.isArchived
+              ? Icons.unarchive_outlined
+              : Icons.archive_outlined,
+          onSelected: () => _archive(context, ref),
+        ),
+        ItemAction(
+          label: 'Delete',
+          icon: Icons.delete_outline,
+          destructive: true,
+          onSelected: () => _delete(context, ref),
+        ),
+      ];
+
+  void _edit(BuildContext context) {
+    showAdaptiveSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => CreateEditGoalSheet(goal: goal),
+    );
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -373,38 +413,15 @@ class _GoalCard extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Slidable(
-        key: ValueKey(goal.id),
-        endActionPane: ActionPane(
-          motion: const DrawerMotion(),
-          children: [
-            SlidableAction(
-              onPressed: (_) => _delete(context, ref),
-              backgroundColor: cs.error,
-              foregroundColor: Colors.white,
-              icon: Icons.delete_outline,
-              label: 'Delete',
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ],
-        ),
-        startActionPane: ActionPane(
-          motion: const DrawerMotion(),
-          children: [
-            SlidableAction(
-              onPressed: (_) => _archive(ref),
-              backgroundColor: const Color(0xFFFBBF24),
-              foregroundColor: Colors.white,
-              icon: goal.isArchived
-                  ? Icons.unarchive_outlined
-                  : Icons.archive_outlined,
-              label: goal.isArchived ? 'Unarchive' : 'Archive',
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ],
-        ),
+      child: ItemSwipeActions(
+        itemKey: ValueKey(goal.id),
+        radius: 16,
+        onEdit: () => _edit(context),
+        onDelete: () => _delete(context, ref),
         child: GestureDetector(
           onTap: () => context.push('/goals/${goal.id}'),
+          onLongPress: () => showItemActions(context,
+              title: goal.name, actions: _actions(context, ref)),
           child: Container(
             decoration: BoxDecoration(
               color: cs.surfaceVariant,
@@ -503,6 +520,8 @@ class _GoalCard extends ConsumerWidget {
                             date: goal.targetDate,
                             color: goalColor,
                           ),
+                          const SizedBox(width: 4),
+                          ItemDragHandle(index: index),
                         ],
                       ),
                     ],
@@ -527,8 +546,11 @@ class _GoalCard extends ConsumerWidget {
     await GoalRepository.instance.delete(goal.id);
   }
 
-  Future<void> _archive(WidgetRef ref) async {
+  Future<void> _archive(BuildContext context, WidgetRef ref) async {
     if (goal.isArchived) {
+      // Unarchiving makes the goal active again, so it counts against the
+      // free-tier cap exactly like creating one.
+      if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
       await GoalRepository.instance.unarchive(goal.id);
     } else {
       await GoalRepository.instance.archive(goal.id);

@@ -15,12 +15,13 @@ import '../../features/habits/presentation/habits_screen.dart';
 import '../../features/onboarding/presentation/welcome_screen.dart';
 import '../../features/premium/presentation/premium_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
+import '../../features/me/presentation/me_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
 
   return GoRouter(
-    initialLocation: '/dashboard',
+    initialLocation: '/today',
     redirect: (context, state) {
       if (!Onboarding.isComplete(prefs)) {
         const allowed = {'/welcome', '/premium'};
@@ -28,11 +29,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         return '/welcome';
       }
       final uri = state.uri;
-      if (uri.scheme == 'roadmapx' || uri.host == 'today' || uri.path.contains('today')) {
+      if (uri.scheme == 'com.naviwix.roadmapx') {
+        // OAuth callback: Supabase has already consumed the tokens, so just
+        // return to the account screen where sign-in was started.
+        return '/premium';
+      }
+      if (uri.scheme == 'roadmapx') {
+        // Home-screen widget deep links: roadmapx://roadmapx/<screen>.
+        if (uri.path.contains('settings')) return '/settings';
+        return '/today';
+      }
+      if (uri.host == 'today' || uri.path.contains('today')) {
         return '/today';
       }
       if (state.matchedLocation == '/' || uri.path == '/' || uri.path.isEmpty) {
-        return '/dashboard';
+        return '/today';
       }
       return null;
     },
@@ -40,7 +51,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(
         path: '/',
-        redirect: (_, __) => '/dashboard',
+        redirect: (_, __) => '/today',
+      ),
+      // The old home route; kept so saved links and notifications still land.
+      GoRoute(
+        path: '/dashboard',
+        redirect: (_, __) => '/today',
       ),
       GoRoute(
         path: '/welcome',
@@ -53,16 +69,8 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/dashboard',
-                builder: (context, state) => const DashboardScreen(),
-              ),
-            ],
-          ),
-          StatefulShellBranch(
-            routes: [
-              GoRoute(
                 path: '/today',
-                builder: (context, state) => const TodayScreen(),
+                builder: (context, state) => const DashboardScreen(),
               ),
             ],
           ),
@@ -97,12 +105,21 @@ final appRouterProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(
             routes: [
               GoRoute(
-                path: '/analytics',
-                builder: (context, state) => const AnalyticsScreen(),
+                path: '/me',
+                builder: (context, state) => const MeScreen(),
               ),
             ],
           ),
         ],
+      ),
+      // Full task planner: overdue, today, this week and later.
+      GoRoute(
+        path: '/tasks',
+        builder: (context, state) => const TodayScreen(),
+      ),
+      GoRoute(
+        path: '/analytics',
+        builder: (context, state) => const AnalyticsScreen(),
       ),
       GoRoute(
         path: '/schedule',
@@ -115,10 +132,6 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin',
         builder: (context, state) => const AdminScreen(),
-      ),
-      GoRoute(
-        path: '/habits',
-        builder: (context, state) => const HabitsScreen(),
       ),
       GoRoute(
         path: '/premium',

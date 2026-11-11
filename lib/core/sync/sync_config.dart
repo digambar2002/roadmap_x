@@ -24,6 +24,13 @@ class SyncConfig {
   static bool get isConfigured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
+  /// Where the browser sends the user back after an OAuth sign-in. Must be
+  /// listed under Authentication → URL Configuration → Redirect URLs in the
+  /// Supabase dashboard, and match the intent-filter / URL scheme declared in
+  /// the Android manifest and iOS Info.plist.
+  static const String oauthRedirectUri =
+      'com.naviwix.roadmapx://login-callback';
+
   /// Server table holding every synced row across all collections.
   static const String recordsTable = 'records';
 

@@ -1,4 +1,4 @@
-package com.example.roadmap_x
+package com.naviwix.roadmapx
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -60,12 +60,19 @@ class _NavItem {
   const _NavItem({required this.icon, required this.label});
 }
 
+/// Four destinations, each with one job:
+/// - Today: what to do now (habits, tasks, schedule).
+/// - Goals: the long-term plan.
+/// - Habits: the daily routine tracker.
+/// - Me: account, Premium, insights, schedule and settings.
+///
+/// Everything else is reached from one of these, so there is always a single
+/// obvious place to look.
 const _navItems = [
-  _NavItem(icon: Icons.home_rounded, label: 'Home'),
-  _NavItem(icon: Icons.today_rounded, label: 'Today'),
-  _NavItem(icon: Icons.flag_rounded, label: 'Goals'),
+  _NavItem(icon: Icons.wb_sunny_outlined, label: 'Today'),
+  _NavItem(icon: Icons.flag_outlined, label: 'Goals'),
   _NavItem(icon: Icons.check_circle_outline_rounded, label: 'Habits'),
-  _NavItem(icon: Icons.bar_chart_rounded, label: 'Stats'),
+  _NavItem(icon: Icons.person_outline_rounded, label: 'Me'),
 ];
 
 // ── Side navigation (medium and expanded) ─────────────────
@@ -119,15 +126,6 @@ class _SideNav extends StatelessWidget {
                 onTap: () => onTap(i),
               ),
             const Spacer(),
-            _SideNavTab(
-              item: const _NavItem(
-                icon: Icons.settings_outlined,
-                label: 'Settings',
-              ),
-              selected: false,
-              extended: extended,
-              onTap: () => context.push('/settings'),
-            ),
             const SizedBox(height: 12),
           ],
         ),

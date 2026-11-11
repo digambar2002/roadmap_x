@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_hooks/flutter_hooks.dart';
-import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import '../../../core/models/models.dart';
@@ -12,11 +11,13 @@ import '../../../shared/widgets/bottom_sheet_handle.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/empty_state.dart';
+import '../../../shared/widgets/item_actions.dart';
 import '../../goals/providers/goal_provider.dart';
 import '../data/schedule_repository.dart';
 import '../providers/schedule_provider.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
+import '../../../shared/widgets/page_title.dart';
 
 class ScheduleScreen extends ConsumerWidget {
   const ScheduleScreen({super.key});
@@ -24,10 +25,10 @@ class ScheduleScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
-    final tt = Theme.of(context).textTheme;
     final selectedDate = ref.watch(selectedScheduleDateProvider);
     final selectedDay = selectedDate.weekday % 7;
-    final scheduleAsync = ref.watch(scheduleForWeekdayProvider(selectedDay));
+    final scheduleAsync =
+        ref.watch(scheduleForWeekdayIncludingInactiveProvider(selectedDay));
 
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     final now = DateTime.now();
@@ -42,17 +43,16 @@ class ScheduleScreen extends ConsumerWidget {
     );
 
     return Scaffold(
-      backgroundColor: cs.background,
-      body: AdaptivePage(child: SafeArea(
+      backgroundColor: cs.surface,
+      body: AdaptivePage(
+          child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // ── Header ──────────────────────────────────────
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Text('Schedule',
-                  style:
-                      tt.headlineMedium?.copyWith(fontWeight: FontWeight.w700)),
+              child: const PageTitle('Schedule'),
             ).animate().fadeIn(duration: 300.ms),
 
             // ── Day selector ─────────────────────────────────
@@ -294,167 +294,163 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
-      child: Slidable(
-        key: ValueKey(widget.item.id),
-        endActionPane: ActionPane(
-          motion: const DrawerMotion(),
-          children: [
-            SlidableAction(
-              onPressed: (_) => _delete(context),
-              backgroundColor: cs.error,
-              foregroundColor: Colors.white,
-              icon: Icons.delete_outline,
-              label: 'Delete',
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ],
-        ),
-        child: GestureDetector(
-          onTap: () => setState(() => _expanded = !_expanded),
-          onLongPress: () => _openEdit(context),
-          child: Container(
-            decoration: BoxDecoration(
-              color: cs.surfaceVariant,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: cs.outline),
-            ),
-            child: IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Container(
-                    width: 4,
-                    decoration: BoxDecoration(
-                      color: accentColor,
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(12),
-                        bottomLeft: Radius.circular(12),
+      // Paused items stay listed (dimmed) so they can be resumed or deleted.
+      child: Opacity(
+        opacity: widget.item.isActive ? 1 : 0.5,
+        child: ItemSwipeActions(
+          itemKey: ValueKey(widget.item.id),
+          radius: 12,
+          onEdit: () => _openEdit(context),
+          onDelete: () => _delete(context),
+          child: GestureDetector(
+            onTap: () => setState(() => _expanded = !_expanded),
+            onLongPress: () => showItemActions(context,
+                title: widget.item.label, actions: _actions(context)),
+            child: Container(
+              decoration: BoxDecoration(
+                color: cs.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: cs.outline),
+              ),
+              child: IntrinsicHeight(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Container(
+                      width: 4,
+                      decoration: BoxDecoration(
+                        color: accentColor,
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          bottomLeft: Radius.circular(12),
+                        ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Checkbox(
-                                value: completedAsync.valueOrNull
-                                        ?.contains(widget.item.uid) ??
-                                    false,
-                                onChanged: (v) async {
-                                  await ScheduleCompletionService.instance
-                                      .setCompleted(
-                                    widget.selectedDate,
-                                    widget.item.uid,
-                                    v ?? false,
-                                  );
-                                  // ref is unusable if the card was torn
-                                  // down while the write was in flight.
-                                  if (!mounted) return;
-                                  ref.invalidate(scheduleCompletedUidsProvider(
-                                      widget.selectedDate));
-                                },
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: accentColor.withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(6),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.all(14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Checkbox(
+                                  value: completedAsync.valueOrNull
+                                          ?.contains(widget.item.uid) ??
+                                      false,
+                                  onChanged: (v) async {
+                                    await ScheduleCompletionService.instance
+                                        .setCompleted(
+                                      widget.selectedDate,
+                                      widget.item.uid,
+                                      v ?? false,
+                                    );
+                                    // ref is unusable if the card was torn
+                                    // down while the write was in flight.
+                                    if (!mounted) return;
+                                    ref.invalidate(
+                                        scheduleCompletedUidsProvider(
+                                            widget.selectedDate));
+                                  },
                                 ),
-                                child: Text(
-                                  widget.item.time,
-                                  style: TextStyle(
-                                    fontFamily: 'JetBrains Mono',
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                    color: accentColor,
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 3),
+                                  decoration: BoxDecoration(
+                                    color: accentColor.withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(6),
                                   ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Text(
-                                  widget.item.label,
-                                  style: tt.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.w600),
-                                ),
-                              ),
-                              Icon(
-                                _expanded
-                                    ? Icons.expand_less
-                                    : Icons.expand_more,
-                                size: 18,
-                                color: cs.onSurfaceVariant,
-                              ),
-                            ],
-                          ),
-                          if (_expanded) ...[
-                            const SizedBox(height: 8),
-                            if (widget.item.detail.isNotEmpty)
-                              Text(widget.item.detail, style: tt.bodySmall),
-                            if (goalName != null) ...[
-                              const SizedBox(height: 6),
-                              GestureDetector(
-                                onTap: linkedGoal == null
-                                    ? null
-                                    : () => context
-                                        .push('/focus/${linkedGoal!.id}'),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.flag_outlined,
-                                        size: 13, color: accentColor),
-                                    const SizedBox(width: 6),
-                                    Text(goalName!,
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: accentColor,
-                                          fontWeight: FontWeight.w500,
-                                        )),
-                                    const Spacer(),
-                                    if (linkedGoal != null)
-                                      Text(
-                                        'Focus →',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: accentColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                            if (_linkedTasks.isNotEmpty) ...[
-                              const SizedBox(height: 8),
-                              Text('Next tasks',
-                                  style: tt.labelMedium?.copyWith(
-                                    fontWeight: FontWeight.w600,
-                                  )),
-                              const SizedBox(height: 4),
-                              ..._linkedTasks.map(
-                                (ctx) => Padding(
-                                  padding: const EdgeInsets.only(bottom: 2),
                                   child: Text(
-                                    '• ${ctx.task.text}',
-                                    style: tt.bodySmall,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
+                                    widget.item.time,
+                                    style: TextStyle(
+                                      fontFamily: 'JetBrains Mono',
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: accentColor,
+                                    ),
                                   ),
                                 ),
-                              ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    widget.item.label,
+                                    style: tt.bodyMedium
+                                        ?.copyWith(fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                                Icon(
+                                  _expanded
+                                      ? Icons.expand_less
+                                      : Icons.expand_more,
+                                  size: 18,
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ],
+                            ),
+                            if (_expanded) ...[
+                              const SizedBox(height: 8),
+                              if (widget.item.detail.isNotEmpty)
+                                Text(widget.item.detail, style: tt.bodySmall),
+                              if (goalName != null) ...[
+                                const SizedBox(height: 6),
+                                GestureDetector(
+                                  onTap: linkedGoal == null
+                                      ? null
+                                      : () => context
+                                          .push('/focus/${linkedGoal!.id}'),
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.flag_outlined,
+                                          size: 13, color: accentColor),
+                                      const SizedBox(width: 6),
+                                      Text(goalName!,
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: accentColor,
+                                            fontWeight: FontWeight.w500,
+                                          )),
+                                      const Spacer(),
+                                      if (linkedGoal != null)
+                                        Text(
+                                          'Focus →',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: accentColor,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              if (_linkedTasks.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text('Next tasks',
+                                    style: tt.labelMedium?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    )),
+                                const SizedBox(height: 4),
+                                ..._linkedTasks.map(
+                                  (ctx) => Padding(
+                                    padding: const EdgeInsets.only(bottom: 2),
+                                    child: Text(
+                                      '• ${ctx.task.text}',
+                                      style: tt.bodySmall,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                              const SizedBox(height: 8),
+                              _WeekdayChips(weekdays: widget.item.weekdays),
                             ],
-                            const SizedBox(height: 8),
-                            _WeekdayChips(weekdays: widget.item.weekdays),
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -463,23 +459,14 @@ class _ScheduleItemCardState extends ConsumerState<_ScheduleItemCard> {
     );
   }
 
-  Future<void> _delete(BuildContext context) async {
-    final ok = await ConfirmationDialog.show(
-      context,
-      title: 'Delete Schedule Item',
-      message: 'Delete "${widget.item.label}"?',
-    );
-    if (ok) await ScheduleRepository.instance.delete(widget.item.id);
-  }
+  List<ItemAction> _actions(BuildContext context) =>
+      scheduleItemActions(context, widget.item);
 
-  void _openEdit(BuildContext context) {
-    showAdaptiveSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => CreateEditScheduleSheet(item: widget.item),
-    );
-  }
+  Future<void> _delete(BuildContext context) =>
+      deleteScheduleItem(context, widget.item);
+
+  void _openEdit(BuildContext context) =>
+      editScheduleItem(context, widget.item);
 }
 
 class _WeekdayChips extends StatelessWidget {
@@ -545,6 +532,14 @@ class CreateEditScheduleSheet extends HookConsumerWidget {
 
     Future<void> save() async {
       if (!formKey.currentState!.validate()) return;
+      if (selectedWeekdays.value.isEmpty) {
+        // An item with no weekday is shown on no tab and can never be
+        // reached again to fix or delete.
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pick at least one day.')),
+        );
+        return;
+      }
       isSaving.value = true;
       try {
         if (isEdit) {
@@ -567,6 +562,12 @@ class CreateEditScheduleSheet extends HookConsumerWidget {
           );
         }
         if (context.mounted) Navigator.of(context).pop();
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not save: $e')),
+          );
+        }
       } finally {
         isSaving.value = false;
       }
@@ -845,3 +846,50 @@ class _WeekdaySelector extends StatelessWidget {
     );
   }
 }
+
+// ── Shared schedule item actions ──────────────────────────
+// Used by the Schedule screen and the schedule on Today, so a routine offers
+// the same options wherever it appears.
+
+void editScheduleItem(BuildContext context, ScheduleItem item) {
+  showAdaptiveSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => CreateEditScheduleSheet(item: item),
+  );
+}
+
+Future<void> deleteScheduleItem(BuildContext context, ScheduleItem item) async {
+  final ok = await ConfirmationDialog.show(
+    context,
+    title: 'Delete Schedule Item',
+    message: 'Delete "${item.label}"?',
+  );
+  if (ok) await ScheduleRepository.instance.delete(item.id);
+}
+
+List<ItemAction> scheduleItemActions(BuildContext context, ScheduleItem item) =>
+    [
+      ItemAction(
+        label: 'Edit',
+        icon: Icons.edit_outlined,
+        onSelected: () => editScheduleItem(context, item),
+      ),
+      ItemAction(
+        label: item.isActive ? 'Pause' : 'Resume',
+        icon: item.isActive
+            ? Icons.pause_circle_outline_rounded
+            : Icons.play_circle_outline_rounded,
+        onSelected: () async {
+          item.isActive = !item.isActive;
+          await ScheduleRepository.instance.update(item);
+        },
+      ),
+      ItemAction(
+        label: 'Delete',
+        icon: Icons.delete_outline,
+        destructive: true,
+        onSelected: () => deleteScheduleItem(context, item),
+      ),
+    ];

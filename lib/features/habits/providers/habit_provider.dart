@@ -2,6 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../core/models/models.dart';
 import '../../../core/services/habit_checkin_service.dart';
+import '../../../core/services/habit_customization_service.dart';
 import '../../../core/sync/sync_service.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../data/habit_repository.dart';
@@ -75,18 +76,21 @@ final todayHabitChecksProvider =
 final habitChecksForDateProvider =
     FutureProvider.family<Set<String>, DateTime>((ref, date) async {
   ref.watch(habitActivityTickProvider);
+  ref.watch(habitsProvider);
   return ref.read(habitCheckinServiceProvider).getCheckedForDate(date);
 });
 
 final habitWeeklyProgressProvider =
     FutureProvider<Map<String, int>>((ref) async {
   ref.watch(habitActivityTickProvider);
+  ref.watch(habitsProvider);
   final service = ref.read(habitCheckinServiceProvider);
   final now = DateTime.now();
   final counts = <String, int>{};
 
   for (var i = 0; i < 7; i++) {
-    final d = now.subtract(Duration(days: i));
+    // Date components, not Duration: a DST change would shift the day.
+    final d = DateTime(now.year, now.month, now.day - i);
     final checked = await service.getCheckedForDate(d);
     for (final uid in checked) {
       counts[uid] = (counts[uid] ?? 0) + 1;
@@ -98,11 +102,13 @@ final habitWeeklyProgressProvider =
 final habitCompletedDaysInWeekProvider =
     FutureProvider.family<Set<String>, DateTime>((ref, weekStart) async {
   ref.watch(habitActivityTickProvider);
+  ref.watch(habitsProvider);
+  ref.watch(habitCustomizationVersionProvider);
   final service = ref.read(habitCheckinServiceProvider);
   final completed = <String>{};
 
   for (var i = 0; i < 7; i++) {
-    final d = weekStart.add(Duration(days: i));
+    final d = DateTime(weekStart.year, weekStart.month, weekStart.day + i);
     if (await service.isDayComplete(d)) {
       final key =
           '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -112,8 +118,18 @@ final habitCompletedDaysInWeekProvider =
   return completed;
 });
 
+/// Every day a single habit was ticked; drives the per-habit month calendar
+/// and the Analytics list on the Habits tab.
+final habitCheckedDatesProvider =
+    FutureProvider.family<Set<DateTime>, String>((ref, habitUid) async {
+  ref.watch(habitActivityTickProvider);
+  return ref.read(habitCheckinServiceProvider).checkedDatesForHabit(habitUid);
+});
+
 final habitStreakProvider = FutureProvider<int>((ref) async {
   ref.watch(habitActivityTickProvider);
+  ref.watch(habitsProvider);
+  ref.watch(habitCustomizationVersionProvider);
   return ref.read(habitCheckinServiceProvider).getCurrentStreak();
 });
 

@@ -14,7 +14,7 @@ void main() {
           StatefulShellRoute.indexedStack(
             builder: (context, state, shell) => AppShell(navigationShell: shell),
             branches: [
-              for (final path in ['/a', '/b', '/c', '/d', '/e'])
+              for (final path in ['/a', '/b', '/c', '/d'])
                 StatefulShellBranch(
                   routes: [
                     GoRoute(
@@ -49,7 +49,7 @@ void main() {
     await pumpAt(tester, const Size(400, 900));
     expect(tester.takeException(), isNull);
 
-    final nav = tester.getTopLeft(find.text('Home'));
+    final nav = tester.getTopLeft(find.text('Today'));
     final page = tester.getTopLeft(find.text('page /a'));
     expect(nav.dy, greaterThan(page.dy), reason: 'labels sit below the page');
   });
@@ -59,7 +59,7 @@ void main() {
     expect(tester.takeException(), isNull);
 
     // Icon-only rail: labels are tooltips, so the visible text is gone.
-    expect(find.text('Home'), findsNothing);
+    expect(find.text('Today'), findsNothing);
     final page = tester.getTopLeft(find.text('page /a'));
     expect(page.dx, greaterThan(0), reason: 'page is inset by the rail');
   });
@@ -69,12 +69,24 @@ void main() {
     expect(tester.takeException(), isNull);
 
     expect(find.text('RoadmapX'), findsOneWidget, reason: 'rail header');
-    expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Settings'), findsOneWidget);
+    expect(find.text('Today'), findsOneWidget);
+    expect(find.text('Me'), findsOneWidget,
+        reason: 'account and settings have their own destination');
+    expect(find.text('Settings'), findsNothing,
+        reason: 'settings is reached from Me, not a second rail entry');
 
-    final home = tester.getTopLeft(find.text('Home'));
+    final home = tester.getTopLeft(find.text('Today'));
     final page = tester.getTopLeft(find.text('page /a'));
     expect(home.dx, lessThan(page.dx), reason: 'rail is left of the page');
+  });
+
+  testWidgets('phone shows exactly the four destinations', (tester) async {
+    await pumpAt(tester, const Size(400, 900));
+    for (final label in ['Today', 'Goals', 'Habits', 'Me']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    expect(find.text('Home'), findsNothing);
+    expect(find.text('Stats'), findsNothing);
   });
 
   testWidgets('side rail switches branches', (tester) async {
@@ -83,7 +95,7 @@ void main() {
     await tester.tap(find.text('Goals'));
     await tester.pumpAndSettle();
 
-    expect(find.text('page /c'), findsOneWidget);
+    expect(find.text('page /b'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -20,7 +20,7 @@ class GeminiService {
             temperature: 0.7,
             topK: 40,
             topP: 0.95,
-              maxOutputTokens: 2048,
+            maxOutputTokens: 2048,
             responseMimeType: 'application/json',
           ),
         );
@@ -89,7 +89,10 @@ $userPrompt
       _logSdkError('GenerativeAIException', e, st);
       final details = _redact(e.toString());
       final msg = e.message.toLowerCase();
-      if (msg.contains('model') && (msg.contains('not found') || msg.contains('not supported') || msg.contains('unavailable'))) {
+      if (msg.contains('model') &&
+          (msg.contains('not found') ||
+              msg.contains('not supported') ||
+              msg.contains('unavailable'))) {
         throw GeminiException(
           'Selected model is not available for this API key. Choose Gemini 2.5 Flash in Settings.',
           debugDetails: details,
@@ -108,20 +111,23 @@ $userPrompt
           );
         }
       }
-      if (msg.contains('400') || msg.contains('api key') || msg.contains('permission')) {
-        throw GeminiException('API key is invalid. Check Settings.', debugDetails: details);
+      if (msg.contains('400') ||
+          msg.contains('api key') ||
+          msg.contains('permission')) {
+        throw GeminiException('API key is invalid. Check Settings.',
+            debugDetails: details);
       }
       if (msg.contains('503') || msg.contains('unavailable')) {
-        throw GeminiException('Gemini is overloaded. Try again shortly.', debugDetails: details);
+        throw GeminiException('Gemini is overloaded. Try again shortly.',
+            debugDetails: details);
       }
       throw GeminiException('Gemini error. Try again.', debugDetails: details);
     }
   }
 
   Future<AiGoalResponse> _requestAndParse(String prompt) async {
-    final response = await _model
-        .generateContent([Content.text(prompt)])
-        .timeout(const Duration(seconds: 30));
+    final response = await _model.generateContent(
+        [Content.text(prompt)]).timeout(const Duration(seconds: 30));
 
     final raw = response.text;
     if (raw == null || raw.trim().isEmpty) {
@@ -202,7 +208,8 @@ class AiGoalResponse {
     );
   }
 
-  int get totalTasks => milestones.fold<int>(0, (sum, m) => sum + m.tasks.length);
+  int get totalTasks =>
+      milestones.fold<int>(0, (sum, m) => sum + m.tasks.length);
 }
 
 class AiGoal {

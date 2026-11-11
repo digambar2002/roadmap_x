@@ -171,6 +171,9 @@ class HabitCustomizationService {
 
 final habitCustomizationProvider =
     FutureProvider.family<HabitCustomization, String>((ref, habitUid) async {
+  // Re-read after the edit sheet saves or deletes a customization; without
+  // this the colour/category/reminder tag stays stale until restart.
+  ref.watch(habitCustomizationVersionProvider);
   return HabitCustomizationService.instance.get(habitUid);
 });
 

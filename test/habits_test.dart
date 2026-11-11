@@ -6,16 +6,20 @@ import 'package:roadmap_x/core/db/isar_service.dart';
 import 'package:roadmap_x/core/models/models.dart';
 import 'package:roadmap_x/core/services/habit_checkin_service.dart';
 import 'package:roadmap_x/features/habits/data/habit_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Habits are user-defined now, so the streak rules have to cope with the set
 /// changing over time.
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory dir;
   late Isar isar;
 
   setUpAll(() async => Isar.initializeIsarCore(download: true));
 
   setUp(() async {
+    // Day-completion now consults each habit's repeat days, stored in prefs.
+    SharedPreferences.setMockInitialValues({});
     dir = await Directory.systemTemp.createTemp('roadmapx_habits');
     isar = await Isar.open(
       [

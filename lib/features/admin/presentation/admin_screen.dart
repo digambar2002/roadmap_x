@@ -100,7 +100,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                   hintText: 'Search by email',
                   prefixIcon: Icon(Icons.search_rounded, size: 20),
                 ),
-                onChanged: (v) => setState(() => _query = v.trim().toLowerCase()),
+                onChanged: (v) =>
+                    setState(() => _query = v.trim().toLowerCase()),
               ),
             ),
             Expanded(
@@ -126,9 +127,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                         padding: EdgeInsets.all(context.pageGutter),
                         child: EmptyState(
                           emoji: '👤',
-                          title: accounts.isEmpty
-                              ? 'No accounts yet'
-                              : 'No match',
+                          title:
+                              accounts.isEmpty ? 'No accounts yet' : 'No match',
                           subtitle: accounts.isEmpty
                               ? 'Accounts appear here once someone signs up.'
                               : 'No account matches "$_query".',

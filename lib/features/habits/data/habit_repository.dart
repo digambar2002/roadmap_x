@@ -29,12 +29,8 @@ class HabitRepository {
       .build()
       .watch(fireImmediately: true);
 
-  Future<List<Habit>> getAll() => _db.habits
-      .filter()
-      .deletedAtIsNull()
-      .sortBySortOrder()
-      .build()
-      .findAll();
+  Future<List<Habit>> getAll() =>
+      _db.habits.filter().deletedAtIsNull().sortBySortOrder().build().findAll();
 
   Future<int> count() => _db.habits.filter().deletedAtIsNull().count();
 

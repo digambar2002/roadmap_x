@@ -102,6 +102,11 @@ returns trigger
 language plpgsql
 as $$
 begin
+  -- Last writer wins by the client's updated_at: a device pushing an older
+  -- row (e.g. after restoring an old backup) must not overwrite a newer one.
+  if tg_op = 'UPDATE' and new.updated_at < old.updated_at then
+    return old;
+  end if;
   new.server_updated_at := now();
   return new;
 end $$;

@@ -14,7 +14,8 @@ class PrefsUtils {
     return fallback;
   }
 
-  static bool readBool(SharedPreferences prefs, String key, {bool fallback = false}) {
+  static bool readBool(SharedPreferences prefs, String key,
+      {bool fallback = false}) {
     if (!prefs.containsKey(key)) return fallback;
     try {
       return prefs.getBool(key) ?? fallback;

@@ -1,4 +1,4 @@
-package com.example.roadmap_x
+package com.naviwix.roadmapx
 
 import android.content.Context
 import android.content.Intent

@@ -34,7 +34,9 @@ class AdminAccount {
   final DateTime? createdAt;
 
   bool get hasExpired =>
-      isPremium && premiumUntil != null && premiumUntil!.isBefore(DateTime.now());
+      isPremium &&
+      premiumUntil != null &&
+      premiumUntil!.isBefore(DateTime.now());
 
   /// Matches `public.is_premium()` — the predicate the sync policies apply.
   bool get isActive => isPremium && !hasExpired;

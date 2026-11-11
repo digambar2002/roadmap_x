@@ -9,7 +9,6 @@ import '../../../../core/services/habit_customization_service.dart';
 import '../../../../shared/widgets/bottom_sheet_handle.dart';
 import '../../../../shared/widgets/confirmation_dialog.dart';
 import '../../data/habit_repository.dart';
-import '../../providers/habit_provider.dart';
 
 /// Full-featured customization sheet for creating or editing a Habit.
 ///
@@ -77,7 +76,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
 
   Future<void> _loadExistingCustomization() async {
     if (widget.habit != null) {
-      final custom = await HabitCustomizationService.instance.get(widget.habit!.uid);
+      final custom =
+          await HabitCustomizationService.instance.get(widget.habit!.uid);
       if (mounted) {
         setState(() {
           _selectedColor = custom.colorHex;
@@ -231,7 +231,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                   InkWell(
                     borderRadius: BorderRadius.circular(16),
                     onTap: () async {
-                      final key = await pickHabitIcon(context, selected: _selectedIcon);
+                      final key =
+                          await pickHabitIcon(context, selected: _selectedIcon);
                       if (key != null && mounted) {
                         setState(() => _selectedIcon = key);
                       }
@@ -242,7 +243,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                       decoration: BoxDecoration(
                         color: Color(_selectedColor).withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: Color(_selectedColor), width: 1.5),
+                        border: Border.all(
+                            color: Color(_selectedColor), width: 1.5),
                       ),
                       child: Icon(
                         HabitIcons.resolve(_selectedIcon),
@@ -311,7 +313,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                             : null,
                       ),
                       child: isSelected
-                          ? const Icon(Icons.check_rounded, color: Colors.white, size: 20)
+                          ? const Icon(Icons.check_rounded,
+                              color: Colors.white, size: 20)
                           : null,
                     ),
                   );
@@ -362,7 +365,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                     label: 'Everyday',
                     isSelected: _selectedDays.length == 7,
                     color: Color(_selectedColor),
-                    onTap: () => setState(() => _selectedDays = [1, 2, 3, 4, 5, 6, 7]),
+                    onTap: () =>
+                        setState(() => _selectedDays = [1, 2, 3, 4, 5, 6, 7]),
                   ),
                   const SizedBox(width: 8),
                   _PresetChip(
@@ -370,7 +374,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                     isSelected: _selectedDays.length == 5 &&
                         _selectedDays.every((d) => d <= 5),
                     color: Color(_selectedColor),
-                    onTap: () => setState(() => _selectedDays = [1, 2, 3, 4, 5]),
+                    onTap: () =>
+                        setState(() => _selectedDays = [1, 2, 3, 4, 5]),
                   ),
                   const SizedBox(width: 8),
                   _PresetChip(
@@ -424,7 +429,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
 
               // ── Notification Reminder ─────────────────────────────
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 decoration: BoxDecoration(
                   color: cs.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(14),
@@ -436,7 +442,9 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                       _hasReminder
                           ? Icons.notifications_active_rounded
                           : Icons.notifications_none_rounded,
-                      color: _hasReminder ? Color(_selectedColor) : cs.onSurfaceVariant,
+                      color: _hasReminder
+                          ? Color(_selectedColor)
+                          : cs.onSurfaceVariant,
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -451,7 +459,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                             _hasReminder
                                 ? 'Alert at ${_formatTime(_reminderHour, _reminderMinute)}'
                                 : 'No alert set',
-                            style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                            style: tt.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
                           ),
                         ],
                       ),
@@ -493,7 +502,8 @@ class _HabitEditSheetState extends ConsumerState<HabitEditSheet> {
                 onPressed: _save,
                 child: Text(
                   isEditing ? 'Save Changes' : 'Create Habit',
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                  style: const TextStyle(
+                      fontSize: 16, fontWeight: FontWeight.w700),
                 ),
               ),
             ],
@@ -560,8 +570,9 @@ Future<String?> pickHabitIcon(
                         ),
                         child: Icon(
                           HabitIcons.catalog[key],
-                          color:
-                              key == selected ? cs.primary : cs.onSurfaceVariant,
+                          color: key == selected
+                              ? cs.primary
+                              : cs.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -672,5 +683,3 @@ class _DayPill extends StatelessWidget {
     );
   }
 }
-
-

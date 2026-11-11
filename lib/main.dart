@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -38,7 +40,6 @@ Future<void> main() async {
     debugPrintStack(stackTrace: stack);
   }
   await BackupService.instance.init();
-  await NotificationService.instance.init();
 
   final prefs = await SharedPreferences.getInstance();
 
@@ -59,8 +60,9 @@ Future<void> main() async {
       PrefsUtils.readBool(prefs, 'daily_reminder_enabled');
   final dailyReminderHour = prefs.getInt('daily_reminder_hour') ?? 9;
   final dailyReminderMinute = prefs.getInt('daily_reminder_minute') ?? 0;
-  final taskDueNotificationsEnabled =
-      PrefsUtils.readBool(prefs, 'task_due_notifications_enabled', fallback: true);
+  final taskDueNotificationsEnabled = PrefsUtils.readBool(
+      prefs, 'task_due_notifications_enabled',
+      fallback: true);
   if (dailyReminderEnabled) {
     await NotificationService.instance.scheduleDailyReminder(
       hour: dailyReminderHour,
@@ -74,6 +76,8 @@ Future<void> main() async {
   await NotificationService.instance.syncTaskDueNotifications(
     allTasks,
     enabled: taskDueNotificationsEnabled,
+    reminderHour: dailyReminderHour,
+    reminderMinute: dailyReminderMinute,
   );
 
   runApp(
@@ -105,6 +109,7 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _notificationTapSub?.cancel();
     super.dispose();
   }
 
@@ -138,6 +143,8 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
     ref.read(activityTickProvider.notifier).state++;
   }
 
+  StreamSubscription<String>? _notificationTapSub;
+
   Future<void> _bootstrapRuntimeServices() async {
     await BackupService.instance.init();
     await _syncNotifications();
@@ -147,6 +154,20 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
         ref.read(appRouterProvider).go('/today');
       }
     });
+
+    // Route notification taps: the one that launched the app (cold start)
+    // and any tapped while it is running.
+    final launchPayload =
+        await NotificationService.instance.consumeLaunchPayload();
+    if (launchPayload != null) _openRouteForPayload(launchPayload);
+    _notificationTapSub = NotificationService.instance.onNotificationTapped
+        .listen(_openRouteForPayload);
+  }
+
+  void _openRouteForPayload(String payload) {
+    final route = NotificationService.routeForPayload(payload);
+    if (route == null || !mounted) return;
+    ref.read(appRouterProvider).go(route);
   }
 
   Future<void> _syncNotifications() async {
@@ -163,6 +184,8 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
     await NotificationService.instance.syncTaskDueNotifications(
       allTasks,
       enabled: taskDueEnabled,
+      reminderHour: prefs.getInt('daily_reminder_hour') ?? 9,
+      reminderMinute: prefs.getInt('daily_reminder_minute') ?? 0,
     );
   }
 
@@ -185,24 +208,25 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       error: (_, __) => ThemeMode.dark,
     );
 
-    final darkStyle = DarkModeStyle.fromKey(settingsAsync.valueOrNull?.darkModeStyle);
+    final darkStyle =
+        DarkModeStyle.fromKey(settingsAsync.valueOrNull?.darkModeStyle);
     final darkTheme = AppTheme.buildDark(darkStyle);
 
     return MaterialApp.router(
-        title: 'RoadmapX',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.light,
-        darkTheme: darkTheme,
-        themeMode: themeMode,
-        routerConfig: router,
-        builder: (context, child) => Theme(
-          // Inside MaterialApp the theme is localized, so its text styles have
-          // real sizes and the desktop scale can be applied to them.
-          data: AppTheme.densifyForPointer(Theme.of(context)),
-          child: RestoreBackupGate(
-            child: child ?? const SizedBox.shrink(),
-          ),
+      title: 'RoadmapX',
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      darkTheme: darkTheme,
+      themeMode: themeMode,
+      routerConfig: router,
+      builder: (context, child) => Theme(
+        // Inside MaterialApp the theme is localized, so its text styles have
+        // real sizes and the desktop scale can be applied to them.
+        data: AppTheme.densifyForPointer(Theme.of(context)),
+        child: RestoreBackupGate(
+          child: child ?? const SizedBox.shrink(),
         ),
-      );
+      ),
+    );
   }
 }

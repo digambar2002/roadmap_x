@@ -58,14 +58,16 @@ class WidgetSyncService {
         final rawList = jsonDecode(pendingStr) as List;
         final ids = rawList.map((e) => (e as num).toInt()).toList();
         if (ids.isNotEmpty) {
-          await HomeWidget.saveWidgetData<String>(
-              'pending_completed_task_ids', '[]');
           for (final id in ids) {
             final task = await TaskRepository.instance.getById(id);
             if (task != null && !task.isCompleted) {
               await TaskRepository.instance.toggleComplete(id);
             }
           }
+          // Cleared after the loop so a crash mid-way retries next launch
+          // instead of dropping the remaining completions.
+          await HomeWidget.saveWidgetData<String>(
+              'pending_completed_task_ids', '[]');
         }
       }
     } catch (e) {
@@ -115,9 +117,11 @@ class WidgetSyncService {
         final item = {
           'id': ctx.task.id,
           'title': ctx.task.text.trim(),
-          'goalTitle': ctx.goal?.name.trim() ?? ctx.milestone?.title.trim() ?? '',
+          'goalTitle':
+              ctx.goal?.name.trim() ?? ctx.milestone?.title.trim() ?? '',
           'isOverdue': ctx.isOverdue,
           'isDueToday': ctx.isDueToday,
+          'isDueThisWeek': ctx.isDueThisWeek,
           'dueDateFormatted': dueFormatted,
         };
 
@@ -140,7 +144,8 @@ class WidgetSyncService {
         ...other,
       ];
 
-      final actionableCount = overdue.length + dueToday.length + thisWeek.length;
+      final actionableCount =
+          overdue.length + dueToday.length + thisWeek.length;
       final dateFormatted = DateFormat('EEE, MMM d').format(DateTime.now());
       final tasksJson = jsonEncode(orderedTasks);
 
