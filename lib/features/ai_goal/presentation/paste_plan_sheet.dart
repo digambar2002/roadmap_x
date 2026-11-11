@@ -8,6 +8,8 @@ import '../../../core/layout/adaptive_sheet.dart';
 import '../../premium/presentation/premium_gate.dart';
 import '../data/goal_plan_saver.dart';
 import '../data/plan_text_parser.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../../shared/widgets/text_input_dialog.dart';
 
 /// Opens the "Create from text" sheet. Returns the new goal's id, or null.
 Future<int?> showPastePlanSheet(BuildContext context) => showAdaptiveSheet<int>(
@@ -49,6 +51,34 @@ class _PastePlanSheetState extends ConsumerState<PastePlanSheet> {
     _text.dispose();
     _name.dispose();
     super.dispose();
+  }
+
+  /// Builds a prompt for the user's goal, copies it, and opens ChatGPT with
+  /// it filled in. They come back and paste the answer.
+  Future<void> _askChatGpt() async {
+    final goal = await showTextInputDialog(
+      context,
+      title: 'What do you want to achieve?',
+      hintText: 'e.g. Run a half marathon in 3 months',
+      confirmLabel: 'Copy prompt',
+      maxLength: 140,
+    );
+    if (goal == null || !mounted) return;
+    final prompt = PlanTextParser.chatGptPrompt(goal);
+    await Clipboard.setData(ClipboardData(text: prompt));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text(
+        'Prompt copied. Send it in ChatGPT, copy the answer, then tap Paste here.',
+      ),
+      duration: Duration(seconds: 5),
+    ));
+    final uri = Uri.https('chatgpt.com', '/', {'q': prompt});
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      // The prompt is on the clipboard either way.
+    }
   }
 
   Future<void> _paste() async {
@@ -160,9 +190,9 @@ class _PastePlanSheetState extends ConsumerState<PastePlanSheet> {
                 const SizedBox(height: 4),
                 Text(
                   plan == null
-                      ? 'Paste a plan, a list or notes. Headings and lines '
-                          'like "Week 1:" become milestones; bullets and '
-                          'numbered lines become tasks.'
+                      ? 'Paste a plan from ChatGPT, a list or your notes. '
+                          'Headings and lines like "Week 1:" become '
+                          'milestones; bullets become tasks.'
                       : '${plan.milestones.length} milestone'
                           '${plan.milestones.length == 1 ? '' : 's'} · '
                           '${plan.totalTasks} task'
@@ -187,6 +217,31 @@ class _PastePlanSheetState extends ConsumerState<PastePlanSheet> {
   }
 
   List<Widget> _inputView(ColorScheme cs, TextTheme tt) => [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: cs.primary.withValues(alpha: 0.07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.25)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Planning with ChatGPT? Ask it with our prompt, then paste '
+                  'its answer below.',
+                  style: tt.bodySmall,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton.tonal(
+                onPressed: _busy ? null : _askChatGpt,
+                child: const Text('Ask ChatGPT'),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         TextField(
           controller: _text,
           minLines: 8,
@@ -315,7 +370,21 @@ class _PastePlanSheetState extends ConsumerState<PastePlanSheet> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        Expanded(child: Text(t.text, style: tt.bodySmall)),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(t.text, style: tt.bodySmall),
+                              if (t.note.isNotEmpty)
+                                Text(
+                                  t.note,
+                                  style: tt.labelSmall?.copyWith(
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),

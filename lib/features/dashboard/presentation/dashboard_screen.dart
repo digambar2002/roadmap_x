@@ -166,8 +166,11 @@ class DashboardScreen extends ConsumerWidget {
           child: RefreshIndicator(
             onRefresh: () async {
               ref.invalidate(dashboardDataProvider);
+              // Pull-to-refresh reuses today's cached briefing. Forcing a new
+              // one on every pull spent the small free Gemini quota; the
+              // briefing card has its own refresh button for that.
               if (hasAi) {
-                await ref.read(dailyBriefingProvider.notifier).refresh();
+                await ref.read(dailyBriefingProvider.notifier).load();
               }
               ref.invalidate(todayTasksGroupedProvider);
               ref.invalidate(todayHabitChecksProvider);

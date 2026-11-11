@@ -32,6 +32,8 @@ void main() {
       child: MaterialApp(home: Scaffold(body: PastePlanSheet())),
     ));
 
+    expect(find.text('Ask ChatGPT'), findsOneWidget);
+
     // Nothing typed yet.
     await tester.tap(find.text('Preview'));
     await tester.pump();

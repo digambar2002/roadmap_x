@@ -33,6 +33,7 @@ Future<int> saveGoalPlan(AiGoalResponse plan, {String? goalName}) async {
           milestoneId: saved.id,
           text: t.text,
           priority: t.priority.clamp(0, 2),
+          note: t.note.trim().isEmpty ? null : t.note.trim(),
         );
       }
     }

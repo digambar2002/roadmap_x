@@ -5,16 +5,22 @@ import 'dart:io';
 
 import 'package:google_generative_ai/google_generative_ai.dart';
 
+import 'ai_rate_limiter.dart';
+
 class AiCoachService {
   final String apiKey;
   final String model;
-  final GenerativeModel _model;
+  final _clients = <String, GenerativeModel>{};
 
   AiCoachService({
     required this.apiKey,
     required this.model,
-  }) : _model = GenerativeModel(
-          model: model,
+  });
+
+  GenerativeModel _client(String name) => _clients.putIfAbsent(
+        name,
+        () => GenerativeModel(
+          model: name,
           apiKey: apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.6,
@@ -23,7 +29,8 @@ class AiCoachService {
             maxOutputTokens: 2048,
             responseMimeType: 'application/json',
           ),
-        );
+        ),
+      );
 
   Future<DailyBriefing> generateDailyBriefing({
     required String context,
@@ -170,9 +177,17 @@ Rules:
     );
   }
 
-  Future<Map<String, dynamic>> _requestJson(String prompt) async {
+  Future<Map<String, dynamic>> _requestJson(
+    String prompt, {
+    bool isFallback = false,
+  }) async {
+    final limiter = AiRateLimiter.instance;
+    final blocked = limiter.blockReason();
+    if (blocked != null) throw AiCoachException(blocked);
+    final modelName = limiter.modelFor(model);
+    limiter.record();
     try {
-      final response = await _model.generateContent(
+      final response = await _client(modelName).generateContent(
           [Content.text(prompt)]).timeout(const Duration(seconds: 30));
       final raw = response.text;
       if (raw == null || raw.trim().isEmpty) {
@@ -198,6 +213,15 @@ Rules:
         error: e,
         stackTrace: st,
       );
+      if (isRateLimitError(e.message)) {
+        final kind = limiter.onRateLimited(e.message, model: modelName);
+        if (kind == RateLimitKind.modelNotFree &&
+            !isFallback &&
+            modelName != AiRateLimiter.freeModel) {
+          return _requestJson(prompt, isFallback: true);
+        }
+        throw AiCoachException(limiter.messageFor(kind));
+      }
       throw AiCoachException('AI service error. Please try again.');
     }
   }

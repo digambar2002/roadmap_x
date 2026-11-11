@@ -5,16 +5,22 @@ import 'dart:io';
 
 import 'package:google_generative_ai/google_generative_ai.dart';
 
+import 'ai_rate_limiter.dart';
+
 class GeminiService {
   final String apiKey;
   final String model;
-  final GenerativeModel _model;
+  final _clients = <String, GenerativeModel>{};
 
   GeminiService({
     required this.apiKey,
     required this.model,
-  }) : _model = GenerativeModel(
-          model: model,
+  });
+
+  GenerativeModel _client(String name) => _clients.putIfAbsent(
+        name,
+        () => GenerativeModel(
+          model: name,
           apiKey: apiKey,
           generationConfig: GenerationConfig(
             temperature: 0.7,
@@ -23,7 +29,8 @@ class GeminiService {
             maxOutputTokens: 2048,
             responseMimeType: 'application/json',
           ),
-        );
+        ),
+      );
 
   Future<AiGoalResponse> generateGoal(String userPrompt) async {
     const systemInstruction = '''
@@ -128,9 +135,14 @@ $pastedText
   }
 
   /// Sends a prompt and maps every failure to a friendly [GeminiException].
-  Future<AiGoalResponse> _run(String prompt) async {
+  Future<AiGoalResponse> _run(String prompt, {bool isFallback = false}) async {
+    final limiter = AiRateLimiter.instance;
+    final blocked = limiter.blockReason();
+    if (blocked != null) throw GeminiException(blocked);
+    final modelName = limiter.modelFor(model);
+    limiter.record();
     try {
-      return await _requestAndParse(prompt);
+      return await _requestAndParse(prompt, modelName);
     } on TimeoutException catch (e, st) {
       _logSdkError('Timeout', e, st);
       throw GeminiException('Request timed out. Check your connection.');
@@ -144,6 +156,18 @@ $pastedText
       _logSdkError('GenerativeAIException', e, st);
       final details = _redact(e.toString());
       final msg = e.message.toLowerCase();
+      if (isRateLimitError(e.message)) {
+        // No blind retry: it only spends another request from the same
+        // quota. Wait as long as Gemini asks, or switch to the free model
+        // when this one has no free quota at all.
+        final kind = limiter.onRateLimited(e.message, model: modelName);
+        if (kind == RateLimitKind.modelNotFree &&
+            !isFallback &&
+            modelName != AiRateLimiter.freeModel) {
+          return _run(prompt, isFallback: true);
+        }
+        throw GeminiException(limiter.messageFor(kind), debugDetails: details);
+      }
       if (msg.contains('model') &&
           (msg.contains('not found') ||
               msg.contains('not supported') ||
@@ -152,19 +176,6 @@ $pastedText
           'Selected model is not available for this API key. Choose Gemini 3.8 Flash in Settings.',
           debugDetails: details,
         );
-      }
-      if (msg.contains('429') || msg.contains('rate')) {
-        // One controlled retry with a short backoff helps transient quota spikes.
-        try {
-          await Future<void>.delayed(const Duration(seconds: 2));
-          return await _requestAndParse(prompt);
-        } on GenerativeAIException catch (retryError, retryStack) {
-          _logSdkError('GenerativeAIException(retry)', retryError, retryStack);
-          throw GeminiException(
-            'Too many requests. Wait 10-20 seconds and try again.',
-            debugDetails: _redact(retryError.toString()),
-          );
-        }
       }
       if (msg.contains('400') ||
           msg.contains('api key') ||
@@ -180,8 +191,8 @@ $pastedText
     }
   }
 
-  Future<AiGoalResponse> _requestAndParse(String prompt) async {
-    final response = await _model.generateContent(
+  Future<AiGoalResponse> _requestAndParse(String prompt, String modelName) async {
+    final response = await _client(modelName).generateContent(
         [Content.text(prompt)]).timeout(const Duration(seconds: 30));
 
     final raw = response.text;
@@ -326,10 +337,14 @@ class AiTask {
   final int priority;
   final int order;
 
+  /// Extra detail, e.g. the sub-points under a task in a pasted plan.
+  final String note;
+
   const AiTask({
     required this.text,
     required this.priority,
     required this.order,
+    this.note = '',
   });
 
   factory AiTask.fromJson(Map<String, dynamic> json) {
@@ -337,6 +352,7 @@ class AiTask {
       text: (json['text'] ?? '').toString(),
       priority: (json['priority'] as num?)?.toInt() ?? 0,
       order: (json['order'] as num?)?.toInt() ?? 0,
+      note: (json['note'] ?? '').toString(),
     );
   }
 }

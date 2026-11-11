@@ -943,8 +943,8 @@ class _AiConfigurationTile extends ConsumerStatefulWidget {
 
 class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
   static const _models = <String, String>{
-    'gemini-3.8-flash': 'Gemini 3.8 Flash (Fast, Free tier)',
-    'gemini-3.1-pro-preview': 'Gemini 3.1 Pro (Smarter, Preview)',
+    'gemini-3.8-flash': 'Gemini 3.8 Flash (Fast, works with free keys)',
+    'gemini-3.1-pro-preview': 'Gemini 3.1 Pro (Smarter, paid key only)',
   };
 
   late final TextEditingController _apiKeyCtrl = TextEditingController();
