@@ -14,6 +14,7 @@ import '../../habits/providers/habit_provider.dart';
 import '../../premium/providers/premium_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../companion/providers/companion_provider.dart';
+import '../../../shared/widgets/text_input_dialog.dart';
 
 /// The "Me" tab: one place for who you are and everything about the app.
 ///
@@ -259,37 +260,14 @@ class _ProfileCard extends ConsumerWidget {
     WidgetRef ref,
     String current,
   ) async {
-    final controller = TextEditingController(text: current);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Your name'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          decoration:
-              const InputDecoration(hintText: 'What should we call you?'),
-          onSubmitted: (v) => Navigator.pop(dialogContext, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    final result = await showTextInputDialog(
+      context,
+      title: 'Your name',
+      initialValue: current,
+      hintText: 'What should we call you?',
     );
-    controller.dispose();
     if (result == null) return;
-    final trimmed = result.trim();
-    await ref
-        .read(settingsProvider.notifier)
-        .setUserName(trimmed.isEmpty ? 'there' : trimmed);
+    await ref.read(settingsProvider.notifier).setUserName(result);
   }
 }
 

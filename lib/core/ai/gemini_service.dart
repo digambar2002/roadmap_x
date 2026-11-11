@@ -74,6 +74,61 @@ User goal request:
 $userPrompt
 ''';
 
+    return _run(prompt);
+  }
+
+  /// Turns text the user pasted (notes, a plan, a list, an email) into a goal
+  /// with milestones and tasks, keeping their own wording.
+  Future<AiGoalResponse> structurePlan(String pastedText) async {
+    const systemInstruction = '''
+You organise a plan the user pasted into a goal, milestones and tasks.
+Return a JSON object with no extra text, no markdown, and no code fences,
+in exactly this shape:
+
+{
+  "goal": {
+    "name": "string (max 60 chars)",
+    "description": "string (1-2 sentences)",
+    "emoji": "string (single relevant emoji)",
+    "color_hex": "string (pick from: #5B9CF6, #34D399, #FBBF24, #F472B6, #A78BFA, #FB923C, #2DD4BF, #38BDF8, #A3E635, #F87171)",
+    "duration_label": "string (e.g. '3 Months', '6 Weeks')"
+  },
+  "milestones": [
+    {
+      "title": "string",
+      "theme": "string",
+      "order": 1,
+      "tasks": [
+        { "text": "string", "priority": 0, "order": 1 }
+      ]
+    }
+  ]
+}
+
+Rules:
+- Keep the user's own wording for tasks. Fix only obvious typos.
+- Every actionable item in the text must become exactly one task.
+- Do not invent extra tasks. Only if the text is a short description with no
+  concrete steps, propose a small set of actionable tasks.
+- Use the text's headings, weeks, phases or sections as milestones; if it has
+  none, group related tasks into 1-4 logical milestones.
+- Ignore greetings, signatures and chit-chat.
+- priority: 2 for urgent/critical items, 1 for important/high, otherwise 0.
+- Return only the JSON object.
+''';
+
+    final prompt = '''
+$systemInstruction
+
+Pasted text:
+$pastedText
+''';
+
+    return _run(prompt);
+  }
+
+  /// Sends a prompt and maps every failure to a friendly [GeminiException].
+  Future<AiGoalResponse> _run(String prompt) async {
     try {
       return await _requestAndParse(prompt);
     } on TimeoutException catch (e, st) {

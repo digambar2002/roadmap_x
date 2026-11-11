@@ -2,9 +2,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../core/ai/gemini_provider.dart';
 import '../../../core/ai/gemini_service.dart';
-import '../../goals/providers/goal_provider.dart';
-import '../../milestones/providers/milestone_provider.dart';
-import '../../tasks/providers/task_provider.dart';
+import '../data/goal_plan_saver.dart';
 
 enum AiGenerationStatus { idle, loading, success, error }
 
@@ -133,52 +131,11 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
   Future<int?> saveToDatabase() async {
     final result = state.result;
     if (result == null) return null;
-
-    final goalRepo = ref.read(goalRepositoryProvider);
-    final milestoneRepo = ref.read(milestoneRepositoryProvider);
-    final taskRepo = ref.read(taskRepositoryProvider);
-
-    var goalId = 0;
     try {
-      final goal = await goalRepo.create(
-        name: result.goal.name.isEmpty ? 'Untitled Goal' : result.goal.name,
-        description: result.goal.description,
-        emoji: result.goal.emoji.isEmpty ? '🎯' : result.goal.emoji,
-        colorHex: _parseColorHex(result.goal.colorHex),
-        targetDate: _targetDateFromDuration(result.goal.durationLabel),
-      );
-      goalId = goal.id;
-
-      final orderedMilestones = [...result.milestones]
-        ..sort((a, b) => a.order.compareTo(b.order));
-      for (final milestone in orderedMilestones) {
-        final savedMilestone = await milestoneRepo.create(
-          goalId: goal.id,
-          title: milestone.title.isEmpty ? 'Milestone' : milestone.title,
-          theme: milestone.theme,
-        );
-
-        final orderedTasks = [...milestone.tasks]
-          ..sort((a, b) => a.order.compareTo(b.order));
-        for (final task in orderedTasks) {
-          await taskRepo.create(
-            milestoneId: savedMilestone.id,
-            text: task.text,
-            priority: task.priority.clamp(0, 2),
-          );
-        }
-      }
-
+      final goalId = await saveGoalPlan(result);
       reset();
-      return goal.id;
+      return goalId;
     } catch (e) {
-      // Remove the half-created goal so a retry can't leave a partial
-      // duplicate sitting next to the complete one.
-      if (goalId != 0) {
-        try {
-          await goalRepo.delete(goalId);
-        } catch (_) {}
-      }
       state = (
         status: AiGenerationStatus.error,
         result: state.result,
@@ -208,25 +165,6 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
       technicalDetails: null,
       prompt: '',
     );
-  }
-
-  int _parseColorHex(String colorHex) {
-    final normalized = colorHex.trim().replaceFirst('#', '').toUpperCase();
-    if (normalized.length != 6) return 0xFF5B9CF6;
-    return int.tryParse('FF$normalized', radix: 16) ?? 0xFF5B9CF6;
-  }
-
-  DateTime _targetDateFromDuration(String label) {
-    final now = DateTime.now();
-    final lower = label.toLowerCase();
-    final number = int.tryParse(RegExp(r'\d+').stringMatch(lower) ?? '');
-
-    if (number == null) return now.add(const Duration(days: 90));
-    if (lower.contains('week')) return now.add(Duration(days: number * 7));
-    if (lower.contains('month')) return now.add(Duration(days: number * 30));
-    if (lower.contains('year')) return now.add(Duration(days: number * 365));
-
-    return now.add(const Duration(days: 90));
   }
 }
 

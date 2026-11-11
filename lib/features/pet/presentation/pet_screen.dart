@@ -11,6 +11,7 @@ import '../domain/pet_domain.dart';
 import '../providers/pet_provider.dart';
 import 'pet_avatar.dart';
 import '../../../core/services/sound_service.dart';
+import '../../../shared/widgets/text_input_dialog.dart';
 
 Sfx soundFor(StoreItem item) => switch (item.category) {
       ItemCategory.food => Sfx.eat,
@@ -82,33 +83,14 @@ class _PetScreenState extends ConsumerState<PetScreen> {
   }
 
   Future<void> _rename(PetState pet) async {
-    final controller = TextEditingController(text: pet.name);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Rename your pet'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textCapitalization: TextCapitalization.words,
-          onSubmitted: (v) => Navigator.pop(dialogContext, v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
+    final result = await showTextInputDialog(
+      context,
+      title: 'Rename your pet',
+      initialValue: pet.name,
+      maxLength: 20,
     );
-    controller.dispose();
-    if (result != null) {
-      await ref.read(petControllerProvider.notifier).rename(result);
-    }
+    if (result == null || !mounted) return;
+    await ref.read(petControllerProvider.notifier).rename(result);
   }
 
   @override

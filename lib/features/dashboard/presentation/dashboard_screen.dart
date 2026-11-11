@@ -30,6 +30,7 @@ import '../../../core/layout/breakpoints.dart';
 import 'widgets/daily_habits_section.dart';
 import 'widgets/today_tasks_section.dart';
 import '../../../shared/widgets/item_actions.dart';
+import '../../ai_goal/presentation/paste_plan_sheet.dart';
 
 /// The Today tab: the home of the app, and only about today.
 ///
@@ -199,6 +200,11 @@ class DashboardScreen extends ConsumerWidget {
         await _createGoal(context, ref);
       case _QuickAdd.aiGoal:
         await _generateWithAi(context, ref);
+      case _QuickAdd.fromText:
+        if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+        if (!context.mounted) return;
+        final goalId = await showPastePlanSheet(context);
+        if (goalId != null && context.mounted) context.go('/goals/$goalId');
       case _QuickAdd.tasksForToday:
         await _pickTasks(context);
       case _QuickAdd.habit:
@@ -257,7 +263,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-enum _QuickAdd { goal, aiGoal, tasksForToday, habit, routine }
+enum _QuickAdd { goal, aiGoal, fromText, tasksForToday, habit, routine }
 
 /// Everything that can be created, in one list, from one button.
 class _QuickAddSheet extends StatelessWidget {
@@ -297,6 +303,8 @@ class _QuickAddSheet extends StatelessWidget {
                 'A bigger outcome with milestones'),
             item(_QuickAdd.aiGoal, Icons.auto_awesome_outlined, 'Goal with AI',
                 'Describe it and get a full roadmap'),
+            item(_QuickAdd.fromText, Icons.content_paste_rounded,
+                'Goal from text', 'Paste a plan, list or notes'),
             item(_QuickAdd.routine, Icons.schedule_rounded, 'Routine',
                 'A recurring time block in your week'),
           ],

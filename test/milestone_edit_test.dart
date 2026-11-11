@@ -84,16 +84,18 @@ void main() {
         find.widgetWithText(TextFormField, 'Old title'), 'New title');
     await tester.enterText(
         find.widgetWithText(TextFormField, 'Old theme'), 'New theme');
-    await tester.runAsync(() async {
-      await tester.tap(find.text('Save Changes'));
-      await Future<void>.delayed(const Duration(milliseconds: 300));
-    });
-    await tester.pump();
-
+    // Wait for the save itself rather than a fixed delay, which was flaky
+    // when the whole suite runs in parallel.
     late List<Milestone> all;
     await tester.runAsync(() async {
-      all = await isar.milestones.filter().deletedAtIsNull().findAll();
+      await tester.tap(find.text('Save Changes'));
+      for (var i = 0; i < 100; i++) {
+        all = await isar.milestones.filter().deletedAtIsNull().findAll();
+        if (all.isNotEmpty && all.single.title == 'New title') break;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
     });
+    await tester.pump();
     expect(all, hasLength(1), reason: 'edited in place, not duplicated');
     expect(all.single.title, 'New title');
     expect(all.single.theme, 'New theme');

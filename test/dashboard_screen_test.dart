@@ -212,6 +212,7 @@ void main() {
       'Habit',
       'Goal',
       'Goal with AI',
+      'Goal from text',
       'Routine',
     ]) {
       expect(find.text(label), findsOneWidget, reason: label);

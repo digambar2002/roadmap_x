@@ -21,6 +21,7 @@ import 'widgets/create_edit_goal_sheet.dart';
 import 'widgets/goal_template_sheet.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
+import '../../ai_goal/presentation/paste_plan_sheet.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -174,6 +175,24 @@ class GoalsScreen extends ConsumerWidget {
                 if (!await PremiumGate.ensureAi(context, ref)) return;
                 if (!context.mounted) return;
                 _openAi(context);
+              },
+            ),
+            Divider(color: cs.outline),
+            ListTile(
+              leading: Icon(Icons.content_paste_rounded,
+                  color: cs.onSurfaceVariant),
+              title: const Text('Create from text'),
+              subtitle: const Text('Paste a plan, list or notes'),
+              onTap: () async {
+                Navigator.pop(context);
+                if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+                if (!context.mounted) return;
+                final goalId = await showPastePlanSheet(context);
+                if (goalId == null || !context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Goal created from your text.')),
+                );
+                context.go('/goals/$goalId');
               },
             ),
             Divider(color: cs.outline),
