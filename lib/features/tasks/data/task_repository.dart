@@ -4,6 +4,7 @@ import '../../../core/db/isar_service.dart';
 import '../../../core/models/models.dart';
 import '../../../core/services/local_changes.dart';
 import '../../../core/models/today_task.dart';
+import '../../../core/services/sound_service.dart';
 
 class TaskRepository {
   TaskRepository._();
@@ -218,7 +219,9 @@ class TaskRepository {
     await LocalChanges.instance.notify();
   }
 
-  Future<void> toggleComplete(int id) async {
+  /// [silent] for completions that did not come from a tap in the app,
+  /// such as ones queued by the home-screen widget.
+  Future<void> toggleComplete(int id, {bool silent = false}) async {
     final task = await getById(id);
     if (task == null) return;
     final now = DateTime.now();
@@ -226,6 +229,7 @@ class TaskRepository {
     task.completedAt = task.isCompleted ? now : null;
     task.updatedAt = now;
     await _db.writeTxn(() async => _db.tasks.put(task));
+    if (task.isCompleted && !silent) SoundService.instance.play(Sfx.done);
     await LocalChanges.instance.notify();
   }
 

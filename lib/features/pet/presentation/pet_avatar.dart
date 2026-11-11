@@ -361,6 +361,7 @@ class _PetPainter extends CustomPainter {
 
     // ── Head ─────────────────────────────────────────────
     canvas.drawCircle(head, headR, bodyPaint);
+    _frontEars(canvas, head, headR, info);
 
     // Panda eye patches; puppy patch.
     final eyeY = head.dy - headR * 0.02;
@@ -582,18 +583,8 @@ class _PetPainter extends CustomPainter {
           );
         }
       case PetSpecies.dog:
-        final flop = math.sin(idle * 2 * math.pi) * 0.06;
-        for (final side in [-1, 1]) {
-          canvas.save();
-          canvas.translate(head.dx + side * r * 0.82, head.dy - r * 0.3);
-          canvas.rotate(side * (0.35 + flop));
-          canvas.drawOval(
-            Rect.fromCenter(
-                center: Offset(0, r * 0.35), width: r * 0.45, height: r * 0.85),
-            Paint()..color = info.accent,
-          );
-          canvas.restore();
-        }
+        // Floppy ears hang over the head: see [_frontEars].
+        break;
       case PetSpecies.bunny:
         final sway = math.sin(idle * 2 * math.pi) * 0.05;
         for (final side in [-1, 1]) {
@@ -603,9 +594,9 @@ class _PetPainter extends CustomPainter {
           canvas.drawRRect(
             RRect.fromRectAndRadius(
               Rect.fromCenter(
-                  center: Offset(0, -r * 0.45),
+                  center: Offset(0, -r * 0.32),
                   width: r * 0.42,
-                  height: r * 1.2),
+                  height: r * 0.92),
               Radius.circular(r * 0.21),
             ),
             body,
@@ -613,9 +604,9 @@ class _PetPainter extends CustomPainter {
           canvas.drawRRect(
             RRect.fromRectAndRadius(
               Rect.fromCenter(
-                  center: Offset(0, -r * 0.42),
+                  center: Offset(0, -r * 0.3),
                   width: r * 0.2,
-                  height: r * 0.9),
+                  height: r * 0.66),
               Radius.circular(r * 0.1),
             ),
             inner,
@@ -632,6 +623,22 @@ class _PetPainter extends CustomPainter {
         }
       case PetSpecies.dino:
         break;
+    }
+  }
+
+  void _frontEars(Canvas canvas, Offset head, double r, SpeciesInfo info) {
+    if (species != PetSpecies.dog) return;
+    final flop = math.sin(idle * 2 * math.pi) * 0.08;
+    for (final side in [-1, 1]) {
+      canvas.save();
+      canvas.translate(head.dx + side * r * 0.86, head.dy - r * 0.42);
+      canvas.rotate(side * (0.22 + flop));
+      canvas.drawOval(
+        Rect.fromCenter(
+            center: Offset(0, r * 0.42), width: r * 0.48, height: r * 0.92),
+        Paint()..color = info.accent,
+      );
+      canvas.restore();
     }
   }
 

@@ -11,6 +11,7 @@ import '../../pet/domain/pet_domain.dart';
 import '../../pet/presentation/pet_avatar.dart';
 import '../../pet/providers/pet_provider.dart';
 import '../providers/companion_provider.dart';
+import '../../../core/services/sound_service.dart';
 
 /// The top of the Today tab: your pet inside the perfect-day ring, how it is
 /// doing, and the coins today has earned. Tapping opens the Pet tab, where
@@ -49,6 +50,7 @@ class _CompanionCardState extends ConsumerState<CompanionCard> {
     if (state.isPerfectToday && prefs.getString(_celebratedKey) != todayKey) {
       prefs.setString(_celebratedKey, todayKey);
       HapticFeedback.heavyImpact();
+      SoundService.instance.play(Sfx.fanfare);
       _confetti.play();
       messenger?.showSnackBar(SnackBar(
         content: Text(
@@ -64,6 +66,7 @@ class _CompanionCardState extends ConsumerState<CompanionCard> {
       prefs.setInt(_levelSeenKey, level);
     } else if (level > seen) {
       prefs.setInt(_levelSeenKey, level);
+      SoundService.instance.play(Sfx.fanfare);
       _confetti.play();
       messenger?.showSnackBar(SnackBar(
         content:

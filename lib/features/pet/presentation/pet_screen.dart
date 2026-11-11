@@ -10,6 +10,14 @@ import '../../../shared/widgets/item_actions.dart';
 import '../domain/pet_domain.dart';
 import '../providers/pet_provider.dart';
 import 'pet_avatar.dart';
+import '../../../core/services/sound_service.dart';
+
+Sfx soundFor(StoreItem item) => switch (item.category) {
+      ItemCategory.food => Sfx.eat,
+      ItemCategory.drink => Sfx.drink,
+      ItemCategory.toy => Sfx.play,
+      ItemCategory.care => item.id == 'soap' ? Sfx.wash : Sfx.sparkle,
+    };
 
 PetAction actionFor(StoreItem item) => switch (item.category) {
       ItemCategory.food => PetAction.eat,
@@ -33,6 +41,7 @@ class _PetScreenState extends ConsumerState<PetScreen> {
   int _nonce = 0;
   String? _actionEmoji;
   DateTime _lastPatSaved = DateTime(2000);
+  static bool _whimperedThisSession = false;
 
   void _play(PetAction action, {String? emoji}) {
     setState(() {
@@ -46,14 +55,17 @@ class _PetScreenState extends ConsumerState<PetScreen> {
     HapticFeedback.lightImpact();
     try {
       await ref.read(petControllerProvider.notifier).useItem(item);
+      SoundService.instance.play(soundFor(item));
       _play(actionFor(item), emoji: item.emoji);
     } on PetActionError catch (e) {
+      SoundService.instance.play(Sfx.nope);
       _toast(e.message);
     }
   }
 
   Future<void> _pat() async {
     HapticFeedback.selectionClick();
+    SoundService.instance.play(Sfx.pat, volume: 0.8);
     _play(PetAction.love);
     // Petting is free and frequent; only write it occasionally.
     final now = DateTime.now();
@@ -104,6 +116,12 @@ class _PetScreenState extends ConsumerState<PetScreen> {
     final cs = Theme.of(context).colorScheme;
     final stored = ref.watch(petControllerProvider);
     final pet = ref.watch(petViewProvider);
+
+    if (pet?.urgentNeed != null && !_whimperedThisSession) {
+      _whimperedThisSession = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+          (_) => SoundService.instance.play(Sfx.whimper));
+    }
 
     return Scaffold(
       backgroundColor: cs.surface,
@@ -623,6 +641,7 @@ class StoreSheet extends ConsumerWidget {
                                     await ref
                                         .read(petControllerProvider.notifier)
                                         .purchase(item);
+                                    SoundService.instance.play(Sfx.coin);
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context)
                                         ..hideCurrentSnackBar()
@@ -633,6 +652,7 @@ class StoreSheet extends ConsumerWidget {
                                         ));
                                     }
                                   } on PetActionError catch (e) {
+                                    SoundService.instance.play(Sfx.nope);
                                     if (context.mounted) {
                                       ScaffoldMessenger.of(context)
                                           .showSnackBar(SnackBar(
@@ -739,6 +759,7 @@ class _AdoptViewState extends ConsumerState<AdoptView> {
         FilledButton(
           onPressed: () async {
             final controller = ref.read(petControllerProvider.notifier);
+            SoundService.instance.play(Sfx.sparkle);
             if (widget.switching) {
               await controller.switchSpecies(_selected);
               if (context.mounted) Navigator.pop(context);

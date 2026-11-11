@@ -4,6 +4,7 @@ import '../db/isar_service.dart';
 import '../models/models.dart';
 import 'habit_customization_service.dart';
 import 'local_changes.dart';
+import 'sound_service.dart';
 
 /// Daily non-negotiables, stored one row per (day, habit).
 ///
@@ -65,6 +66,7 @@ class HabitCheckinService {
     bool value,
   ) async {
     if (habitUid.isEmpty) return;
+    if (value) SoundService.instance.play(Sfx.done);
     final dayKey = dayKeyFor(date);
     final uid = HabitCheckin.uidFor(dayKey, habitUid);
 

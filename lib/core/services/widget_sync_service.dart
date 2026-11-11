@@ -21,7 +21,7 @@ Future<void> widgetBackgroundCallback(Uri? uri) async {
           await IsarService.instance.init();
           final task = await TaskRepository.instance.getById(taskId);
           if (task != null && !task.isCompleted) {
-            await TaskRepository.instance.toggleComplete(taskId);
+            await TaskRepository.instance.toggleComplete(taskId, silent: true);
           }
         }
       }
@@ -61,7 +61,7 @@ class WidgetSyncService {
           for (final id in ids) {
             final task = await TaskRepository.instance.getById(id);
             if (task != null && !task.isCompleted) {
-              await TaskRepository.instance.toggleComplete(id);
+              await TaskRepository.instance.toggleComplete(id, silent: true);
             }
           }
           // Cleared after the loop so a crash mid-way retries next launch

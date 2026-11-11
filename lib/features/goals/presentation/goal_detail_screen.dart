@@ -30,6 +30,7 @@ import '../../premium/presentation/premium_gate.dart';
 import '../../premium/providers/premium_provider.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
+import '../../../core/services/sound_service.dart';
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
   final int goalId;
@@ -235,7 +236,10 @@ class _GoalDetailBody extends ConsumerWidget {
               _MilestonesList(
                 goalId: goal.id,
                 goalColor: goalColor,
-                onMilestoneComplete: () => confettiController.play(),
+                onMilestoneComplete: () {
+                  SoundService.instance.play(Sfx.fanfare);
+                  confettiController.play();
+                },
               ),
 
               const SliverToBoxAdapter(child: SizedBox(height: 100)),

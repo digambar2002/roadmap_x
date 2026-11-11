@@ -26,6 +26,7 @@ import 'features/habits/providers/habit_provider.dart';
 import 'features/tasks/data/task_repository.dart';
 import 'features/settings/providers/settings_provider.dart';
 import 'shared/widgets/restore_backup_gate.dart';
+import 'core/services/sound_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -147,6 +148,8 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
   StreamSubscription<String>? _notificationTapSub;
 
   Future<void> _bootstrapRuntimeServices() async {
+    // After the first frame, so preloading sounds never delays the launch.
+    unawaited(SoundService.instance.init(ref.read(sharedPreferencesProvider)));
     await BackupService.instance.init();
     await _syncNotifications();
     await WidgetSyncService.instance.syncTodayTasks();

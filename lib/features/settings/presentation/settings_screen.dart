@@ -26,6 +26,7 @@ import '../../schedule/data/schedule_repository.dart';
 import '../../../core/services/local_changes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/colors.dart';
+import '../../../core/services/sound_service.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -74,6 +75,9 @@ class SettingsScreen extends ConsumerWidget {
                   onChanged: notifier.setDarkModeStyle,
                 ),
               ],
+
+              const SizedBox(height: 10),
+              const _SoundTile(),
 
               const SizedBox(height: 24),
 
@@ -1134,6 +1138,37 @@ class _CompanionReminderTileState
               .read(sharedPreferencesProvider)
               .setBool(GamificationService.remindersKey, value);
           await GamificationService.instance.syncNudge();
+        },
+      ),
+    );
+  }
+}
+
+/// On/off for every sound effect in the app.
+class _SoundTile extends StatefulWidget {
+  const _SoundTile();
+
+  @override
+  State<_SoundTile> createState() => _SoundTileState();
+}
+
+class _SoundTileState extends State<_SoundTile> {
+  bool _enabled = SoundService.instance.enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return _SettingsSurface(
+      child: SwitchListTile(
+        secondary: Icon(Icons.volume_up_outlined, color: cs.onSurfaceVariant),
+        title: const Text('Sound effects'),
+        subtitle: const Text(
+          'Pet sounds, coins and celebrations. Follows your silent switch.',
+        ),
+        value: _enabled,
+        onChanged: (value) async {
+          setState(() => _enabled = value);
+          await SoundService.instance.setEnabled(value);
         },
       ),
     );
