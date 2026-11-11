@@ -3,34 +3,21 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 
 import 'ai_rate_limiter.dart';
+import 'gemini_rest_client.dart';
 
 class GeminiService {
   final String apiKey;
   final String model;
-  final _clients = <String, GenerativeModel>{};
+  final GeminiRestClient _api;
 
   GeminiService({
     required this.apiKey,
     required this.model,
-  });
-
-  GenerativeModel _client(String name) => _clients.putIfAbsent(
-        name,
-        () => GenerativeModel(
-          model: name,
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(
-            temperature: 0.7,
-            topK: 40,
-            topP: 0.95,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          ),
-        ),
-      );
+    http.Client? httpClient,
+  }) : _api = GeminiRestClient(apiKey: apiKey, client: httpClient);
 
   Future<AiGoalResponse> generateGoal(String userPrompt) async {
     const systemInstruction = '''
@@ -142,25 +129,26 @@ $pastedText
     final modelName = limiter.modelFor(model);
     limiter.record();
     try {
-      return await _requestAndParse(prompt, modelName);
+      final raw = await _api.generateJson(model: modelName, prompt: prompt);
+      return _parse(raw);
     } on TimeoutException catch (e, st) {
       _logSdkError('Timeout', e, st);
       throw GeminiException('Request timed out. Check your connection.');
     } on SocketException catch (e, st) {
       _logSdkError('SocketException', e, st);
       throw GeminiException('No internet connection.');
-    } on FormatException catch (e, st) {
-      _logSdkError('FormatException', e, st);
-      throw GeminiException('AI returned unexpected format. Retry.');
-    } on GenerativeAIException catch (e, st) {
-      _logSdkError('GenerativeAIException', e, st);
-      final details = _redact(e.toString());
-      final msg = e.message.toLowerCase();
-      if (isRateLimitError(e.message)) {
+    } on http.ClientException catch (e, st) {
+      _logSdkError('ClientException', e, st);
+      throw GeminiException('No internet connection.');
+    } on GeminiApiException catch (e, st) {
+      _logSdkError('GeminiApiException', e, st);
+      final details = _redact(e.fullText);
+      final failure = classifyGeminiError(e);
+      if (failure == GeminiFailure.rateLimited) {
         // No blind retry: it only spends another request from the same
         // quota. Wait as long as Gemini asks, or switch to the free model
         // when this one has no free quota at all.
-        final kind = limiter.onRateLimited(e.message, model: modelName);
+        final kind = limiter.onRateLimited(e.fullText, model: modelName);
         if (kind == RateLimitKind.modelNotFree &&
             !isFallback &&
             modelName != AiRateLimiter.freeModel) {
@@ -168,38 +156,14 @@ $pastedText
         }
         throw GeminiException(limiter.messageFor(kind), debugDetails: details);
       }
-      if (msg.contains('model') &&
-          (msg.contains('not found') ||
-              msg.contains('not supported') ||
-              msg.contains('unavailable'))) {
-        throw GeminiException(
-          'Selected model is not available for this API key. Choose Gemini 3.8 Flash in Settings.',
-          debugDetails: details,
-        );
-      }
-      if (msg.contains('400') ||
-          msg.contains('api key') ||
-          msg.contains('permission')) {
-        throw GeminiException('API key is invalid. Check Settings.',
-            debugDetails: details);
-      }
-      if (msg.contains('503') || msg.contains('unavailable')) {
-        throw GeminiException('Gemini is overloaded. Try again shortly.',
-            debugDetails: details);
-      }
-      throw GeminiException('Gemini error. Try again.', debugDetails: details);
+      throw GeminiException(
+        geminiFailureMessage(failure, e, modelName),
+        debugDetails: details,
+      );
     }
   }
 
-  Future<AiGoalResponse> _requestAndParse(String prompt, String modelName) async {
-    final response = await _client(modelName).generateContent(
-        [Content.text(prompt)]).timeout(const Duration(seconds: 30));
-
-    final raw = response.text;
-    if (raw == null || raw.trim().isEmpty) {
-      throw GeminiException('AI returned an empty response. Try again.');
-    }
-
+  AiGoalResponse _parse(String raw) {
     // The model can return a top-level array or omit expected keys even
     // with a JSON response type; surface that as a typed GeminiException
     // instead of an uncaught TypeError.
@@ -209,8 +173,6 @@ $pastedText
         throw const FormatException('Top-level JSON is not an object');
       }
       return AiGoalResponse.fromJson(jsonData);
-    } on GeminiException {
-      rethrow;
     } catch (e) {
       throw GeminiException(
         'AI returned an unexpected format. Try again.',

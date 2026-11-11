@@ -3,34 +3,21 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
-import 'package:google_generative_ai/google_generative_ai.dart';
+import 'package:http/http.dart' as http;
 
 import 'ai_rate_limiter.dart';
+import 'gemini_rest_client.dart';
 
 class AiCoachService {
   final String apiKey;
   final String model;
-  final _clients = <String, GenerativeModel>{};
+  final GeminiRestClient _api;
 
   AiCoachService({
     required this.apiKey,
     required this.model,
-  });
-
-  GenerativeModel _client(String name) => _clients.putIfAbsent(
-        name,
-        () => GenerativeModel(
-          model: name,
-          apiKey: apiKey,
-          generationConfig: GenerationConfig(
-            temperature: 0.6,
-            topK: 32,
-            topP: 0.95,
-            maxOutputTokens: 2048,
-            responseMimeType: 'application/json',
-          ),
-        ),
-      );
+    http.Client? httpClient,
+  }) : _api = GeminiRestClient(apiKey: apiKey, client: httpClient);
 
   Future<DailyBriefing> generateDailyBriefing({
     required String context,
@@ -187,12 +174,11 @@ Rules:
     final modelName = limiter.modelFor(model);
     limiter.record();
     try {
-      final response = await _client(modelName).generateContent(
-          [Content.text(prompt)]).timeout(const Duration(seconds: 30));
-      final raw = response.text;
-      if (raw == null || raw.trim().isEmpty) {
-        throw AiCoachException('AI returned an empty response.');
-      }
+      final raw = await _api.generateJson(
+        model: modelName,
+        prompt: prompt,
+        temperature: 0.6,
+      );
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) {
         // A top-level array would otherwise escape as a TypeError that
@@ -204,17 +190,20 @@ Rules:
       throw AiCoachException('Request timed out. Please retry.');
     } on SocketException {
       throw AiCoachException('No internet connection.');
+    } on http.ClientException {
+      throw AiCoachException('No internet connection.');
     } on FormatException {
       throw AiCoachException('AI returned invalid JSON. Please retry.');
-    } on GenerativeAIException catch (e, st) {
+    } on GeminiApiException catch (e, st) {
       developer.log(
-        '[AiCoach] ${e.message}',
+        '[AiCoach] ${e.httpStatus} ${e.status}: ${e.message}',
         name: 'AiCoachService',
         error: e,
         stackTrace: st,
       );
-      if (isRateLimitError(e.message)) {
-        final kind = limiter.onRateLimited(e.message, model: modelName);
+      final failure = classifyGeminiError(e);
+      if (failure == GeminiFailure.rateLimited) {
+        final kind = limiter.onRateLimited(e.fullText, model: modelName);
         if (kind == RateLimitKind.modelNotFree &&
             !isFallback &&
             modelName != AiRateLimiter.freeModel) {
@@ -222,7 +211,7 @@ Rules:
         }
         throw AiCoachException(limiter.messageFor(kind));
       }
-      throw AiCoachException('AI service error. Please try again.');
+      throw AiCoachException(geminiFailureMessage(failure, e, modelName));
     }
   }
 }

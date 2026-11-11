@@ -62,8 +62,8 @@ class AiRateLimiter {
     final text = error.toLowerCase();
 
     // "limit: 0" — this model is not on the free tier at all.
-    if (RegExp(r'limit:\s*0\b').hasMatch(text) || text.contains('free_tier') &&
-        text.contains('limit: 0')) {
+    if (RegExp(r'limit:\s*0\b').hasMatch(text) ||
+        RegExp(r'"quotavalue"\s*:\s*"0"').hasMatch(text)) {
       if (model != freeModel) _modelsWithoutQuota.add(model);
       return RateLimitKind.modelNotFree;
     }
@@ -116,7 +116,8 @@ class AiRateLimiter {
       final m = d.inMinutes % 60;
       return '${d.inHours} h${m > 0 ? ' $m min' : ''}';
     }
-    if (d.inMinutes >= 1) return '${d.inMinutes + (d.inSeconds % 60 > 0 ? 1 : 0)} min';
+    if (d.inMinutes >= 1)
+      return '${d.inMinutes + (d.inSeconds % 60 > 0 ? 1 : 0)} min';
     return '${d.inSeconds.clamp(1, 59)} s';
   }
 
