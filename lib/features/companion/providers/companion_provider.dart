@@ -7,10 +7,7 @@ import '../../analytics/providers/activity_provider.dart';
 import '../../habits/providers/habit_provider.dart';
 import '../../tasks/providers/task_provider.dart';
 
-/// Bumped when the companion is renamed or switched between plant and pet.
-final companionVersionProvider = StateProvider<int>((_) => 0);
-
-/// Today's game state: the ring, the companion and the level.
+/// Today's game state: the perfect-day ring and the level.
 class GameState {
   const GameState({required this.snapshot, required this.openTasksToday});
 
@@ -32,23 +29,15 @@ class GameState {
   bool get isPerfectToday =>
       doneToday > 0 && openHabitsToday == 0 && openTasksToday == 0;
 
-  /// Nothing done yet today: the companion will lose health tonight.
-  bool get isHungry => doneToday == 0;
+  bool get nothingDoneYet => doneToday == 0;
 
-  int get health => snapshot.health;
   LevelInfo get level => snapshot.level;
 
-  CompanionMood get mood => moodFor(
-        snapshot.health,
-        doneToday: doneToday > 0,
-        perfectToday: isPerfectToday,
-      );
-
-  /// What was earned today and fed to the companion: 💧 per habit, 🍎 per
-  /// task, ⭐ for a perfect day.
-  int get water => today.habitsDone;
-  int get food => today.tasksDone;
-  int get treats => isPerfectToday ? 1 : 0;
+  /// XP earned so far today, and the coins it is worth.
+  int get xpToday =>
+      today.habitsDone * XpRules.habit +
+      today.tasksDone * XpRules.task +
+      (isPerfectToday ? XpRules.perfectDay : 0);
 }
 
 final gameStateProvider = FutureProvider<GameState>((ref) async {
@@ -58,7 +47,6 @@ final gameStateProvider = FutureProvider<GameState>((ref) async {
   ref.watch(goalChangesProvider);
   ref.watch(habitsProvider);
   ref.watch(habitCustomizationVersionProvider);
-  ref.watch(companionVersionProvider);
   final grouped = await ref.watch(todayTasksGroupedProvider.future);
   final snapshot = await GamificationService.instance.load();
   return GameState(

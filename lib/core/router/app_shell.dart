@@ -64,6 +64,7 @@ class _NavItem {
 /// - Today: what to do now (habits, tasks, schedule).
 /// - Goals: the long-term plan.
 /// - Habits: the daily routine tracker.
+/// - Pet: the companion you feed with coins earned from XP.
 /// - Me: account, Premium, insights, schedule and settings.
 ///
 /// Everything else is reached from one of these, so there is always a single
@@ -72,6 +73,7 @@ const _navItems = [
   _NavItem(icon: Icons.wb_sunny_outlined, label: 'Today'),
   _NavItem(icon: Icons.flag_outlined, label: 'Goals'),
   _NavItem(icon: Icons.check_circle_outline_rounded, label: 'Habits'),
+  _NavItem(icon: Icons.pets_rounded, label: 'Pet'),
   _NavItem(icon: Icons.person_outline_rounded, label: 'Me'),
 ];
 

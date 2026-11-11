@@ -16,6 +16,7 @@ import '../../features/onboarding/presentation/welcome_screen.dart';
 import '../../features/premium/presentation/premium_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/me/presentation/me_screen.dart';
+import '../../features/pet/presentation/pet_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
@@ -99,6 +100,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: '/habits',
                 builder: (context, state) => const HabitsScreen(),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/pet',
+                builder: (context, state) => const PetScreen(),
               ),
             ],
           ),

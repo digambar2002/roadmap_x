@@ -106,26 +106,31 @@ void main() {
     );
   });
 
-  test('a new companion starts healthy and loses health on empty days',
-      () async {
+
+  test('today and the last seven days are reported', () async {
     await seed();
-    final prefs = await SharedPreferences.getInstance();
-    // Born three days ago: days -3 (perfect), -2 (empty), -1 (perfect).
-    await prefs.setString(
-        GamificationService.startedKey, HabitCheckinService.dayKeyFor(ago(3)));
     final snap = await GamificationService.instance.load(now: today);
-    expect(snap.health, 80 + 15 - 20 + 15);
     expect(snap.today.anyDone, isFalse);
     expect(snap.recentDays, hasLength(7));
+    expect(snap.recentDays.last.isPerfect, isTrue, reason: 'yesterday');
   });
 
-  test('first run starts the companion today, at full starting health',
-      () async {
-    await seed();
-    final snap = await GamificationService.instance.load(now: today);
-    expect(snap.health, HealthRules.start,
-        reason: 'past inactivity is not held against a new companion');
-    expect(snap.name, 'Sprout');
-    expect(snap.kind, CompanionKind.plant);
+  group('reminder timing', () {
+    final now = DateTime(2026, 11, 11, 10, 0);
+    test('fires when the need runs low, during the day', () {
+      final at = GamificationService.nudgeTime(DateTime(2026, 11, 11, 15), now);
+      expect(at, DateTime(2026, 11, 11, 15));
+    });
+    test('night-time lows move to 9 am', () {
+      expect(GamificationService.nudgeTime(DateTime(2026, 11, 11, 23), now),
+          DateTime(2026, 11, 12, 9));
+      expect(GamificationService.nudgeTime(DateTime(2026, 11, 12, 4), now),
+          DateTime(2026, 11, 12, 9));
+    });
+    test('already low: tonight at 8, or tomorrow morning if past', () {
+      expect(GamificationService.nudgeTime(now, now), DateTime(2026, 11, 11, 20));
+      final late = DateTime(2026, 11, 11, 22);
+      expect(GamificationService.nudgeTime(late, late), DateTime(2026, 11, 12, 9));
+    });
   });
 }

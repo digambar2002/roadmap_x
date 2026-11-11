@@ -14,7 +14,7 @@ void main() {
           StatefulShellRoute.indexedStack(
             builder: (context, state, shell) => AppShell(navigationShell: shell),
             branches: [
-              for (final path in ['/a', '/b', '/c', '/d'])
+              for (final path in ['/a', '/b', '/c', '/d', '/e'])
                 StatefulShellBranch(
                   routes: [
                     GoRoute(
@@ -80,9 +80,9 @@ void main() {
     expect(home.dx, lessThan(page.dx), reason: 'rail is left of the page');
   });
 
-  testWidgets('phone shows exactly the four destinations', (tester) async {
+  testWidgets('phone shows exactly the five destinations', (tester) async {
     await pumpAt(tester, const Size(400, 900));
-    for (final label in ['Today', 'Goals', 'Habits', 'Me']) {
+    for (final label in ['Today', 'Goals', 'Habits', 'Pet', 'Me']) {
       expect(find.text(label), findsOneWidget, reason: label);
     }
     expect(find.text('Home'), findsNothing);

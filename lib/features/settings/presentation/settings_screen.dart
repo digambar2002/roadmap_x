@@ -1101,7 +1101,7 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
   }
 }
 
-/// On/off for the companion's 8 pm nudge on days nothing has been done.
+/// On/off for the pet's reminder when a need is about to run low.
 class _CompanionReminderTile extends ConsumerStatefulWidget {
   const _CompanionReminderTile();
 
@@ -1123,9 +1123,9 @@ class _CompanionReminderTileState
     return _SettingsSurface(
       child: SwitchListTile(
         secondary: Icon(Icons.spa_outlined, color: cs.onSurfaceVariant),
-        title: const Text('Companion reminder'),
+        title: const Text('Pet reminders'),
         subtitle: const Text(
-          'A nudge at 8 pm on days nothing has been done yet.',
+          'A nudge when your pet is about to get hungry, thirsty or bored.',
         ),
         value: _enabled,
         onChanged: (value) async {

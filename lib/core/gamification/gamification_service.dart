@@ -6,33 +6,25 @@ import '../models/models.dart';
 import '../services/habit_checkin_service.dart';
 import '../services/habit_customization_service.dart';
 import '../services/notification_service.dart';
+import '../../features/pet/data/pet_repository.dart';
+import '../../features/pet/domain/pet_domain.dart';
 import 'progress_engine.dart';
-
-enum CompanionKind { plant, pet }
 
 /// Everything the Today card and the Me tab show about progress.
 class GameSnapshot {
   const GameSnapshot({
-    required this.kind,
-    required this.name,
     required this.level,
-    required this.health,
     required this.today,
     required this.recentDays,
   });
 
-  final CompanionKind kind;
-  final String name;
   final LevelInfo level;
-
-  /// Health at the start of today (0–100).
-  final int health;
 
   /// Today so far. Open tasks are added by the provider, which already
   /// watches them.
   final DayActivity today;
 
-  /// The last seven finished days, oldest first, for the care history.
+  /// The last seven finished days, oldest first.
   final List<DayActivity> recentDays;
 }
 
@@ -41,33 +33,12 @@ class GamificationService {
   GamificationService._();
   static final GamificationService instance = GamificationService._();
 
-  static const kindKey = 'companion_kind';
-  static const nameKey = 'companion_name';
-  static const startedKey = 'companion_started';
-
   Isar get _db => IsarService.instance.db;
 
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
   Future<GameSnapshot> load({DateTime? now}) async {
-    final prefs = await SharedPreferences.getInstance();
     final today = _day(now ?? DateTime.now());
-
-    final kind = prefs.getString(kindKey) == 'pet'
-        ? CompanionKind.pet
-        : CompanionKind.plant;
-    final name = prefs.getString(nameKey) ??
-        (kind == CompanionKind.pet ? 'Mochi' : 'Sprout');
-
-    // The companion is born healthy the first time it is shown, so people
-    // upgrading are not greeted by a sick plant for weeks they never saw.
-    var started = HabitCheckinService.parseDayKey(
-      prefs.getString(startedKey) ?? '',
-    );
-    if (started == null) {
-      started = today;
-      await prefs.setString(startedKey, HabitCheckinService.dayKeyFor(today));
-    }
 
     // ── Load history ────────────────────────────────────────
     final habits = await _db.habits.filter().deletedAtIsNull().findAll();
@@ -163,54 +134,51 @@ class GamificationService {
       goalsDone: goalsDone,
     );
 
-    // ── Health since the companion was born ───────────────
-    final finished = <DayActivity>[];
-    for (var d = started;
-        d.isBefore(today);
-        d = DateTime(d.year, d.month, d.day + 1)) {
-      finished.add(activityOn(d));
-    }
     final recent = <DayActivity>[
       for (var i = 7; i >= 1; i--)
         activityOn(DateTime(today.year, today.month, today.day - i)),
     ];
 
     return GameSnapshot(
-      kind: kind,
-      name: name,
       level: levelFor(xp),
-      health: computeHealth(finished),
       today: activityOn(today),
       recentDays: recent,
     );
   }
 
-  Future<void> setCompanion({CompanionKind? kind, String? name}) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (kind != null) {
-      await prefs.setString(
-          kindKey, kind == CompanionKind.pet ? 'pet' : 'plant');
-    }
-    if (name != null && name.trim().isNotEmpty) {
-      await prefs.setString(nameKey, name.trim());
-    }
-  }
-
   static const remindersKey = 'companion_reminders_enabled';
 
-  /// Re-plans the evening nudge for the current state of today.
-  Future<void> syncNudge() async {
+  /// Plans the reminder for when the pet will next run low on something,
+  /// moved into waking hours. No pet, no reminder.
+  Future<void> syncNudge({DateTime? now}) async {
     final prefs = await SharedPreferences.getInstance();
-    final kind = prefs.getString(kindKey) == 'pet'
-        ? CompanionKind.pet
-        : CompanionKind.plant;
-    final name = prefs.getString(nameKey) ??
-        (kind == CompanionKind.pet ? 'Mochi' : 'Sprout');
+    final enabled = prefs.getBool(remindersKey) ?? true;
+    final pet = await PetRepository.instance.load();
+    if (pet == null || !enabled) {
+      await NotificationService.instance.cancelCompanionNudge();
+      return;
+    }
+    final current = now ?? DateTime.now();
+    final next = pet.decayed(current).nextLow();
     await NotificationService.instance.scheduleCompanionNudge(
-      doneToday: await anythingDoneToday(),
-      name: name,
-      enabled: prefs.getBool(remindersKey) ?? true,
+      at: nudgeTime(next.at, current),
+      name: pet.name,
+      complaint: next.need.complaint,
     );
+  }
+
+  /// Keeps reminders between 9:00 and 21:00, and at least a minute out.
+  /// A pet that is already low is reminded about at 20:00 (or tomorrow
+  /// morning if that has passed).
+  static DateTime nudgeTime(DateTime lowAt, DateTime now) {
+    var at = lowAt;
+    if (!at.isAfter(now)) at = DateTime(now.year, now.month, now.day, 20);
+    if (!at.isAfter(now.add(const Duration(minutes: 1)))) {
+      at = DateTime(now.year, now.month, now.day + 1, 9);
+    }
+    if (at.hour < 9) at = DateTime(at.year, at.month, at.day, 9);
+    if (at.hour >= 21) at = DateTime(at.year, at.month, at.day + 1, 9);
+    return at;
   }
 
   /// True when anything has been ticked or completed today. Used to decide

@@ -25,6 +25,8 @@ class SyncedSettings {
   /// remove them instead of being stuck with exactly four.
   static const Set<String> syncedKeys = {
     'user_name',
+    // The virtual pet, its inventory and coins spent (one JSON blob).
+    'pet_state_v1',
   };
 
   final _controller = StreamController<void>.broadcast();

@@ -61,7 +61,6 @@ class NotificationService {
   static const _dailyReminderId = 1;
   static const _companionNudgeId = 5;
   static const _companionPayload = 'companion';
-  static const companionNudgeHour = 20;
   static const _testNotificationId = 999;
   static const _testScheduledNotificationId = 998;
 
@@ -189,7 +188,7 @@ class NotificationService {
         const AndroidNotificationChannel(
           'companion',
           'Companion',
-          description: 'Evening nudge when nothing has been done today',
+          description: 'Reminders when your pet needs looking after',
           importance: Importance.high,
           playSound: true,
           enableVibration: true,
@@ -892,41 +891,34 @@ class NotificationService {
   /// missing; a no-op elsewhere.
   Future<void> openExactAlarmSettings() => _ensureExactAlarmPermission();
 
-  /// The companion's evening nudge, repeating daily at 8 pm.
-  ///
-  /// When something has already been done today, the first one is pushed to
-  /// tomorrow, so it only ever fires on a day that still needs it. Re-run on
-  /// every change and on launch; a user who stops opening the app keeps
-  /// getting the nightly reminder because it repeats.
+  Future<void> cancelCompanionNudge() async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_companionNudgeId);
+  }
+
+  /// One reminder, at the moment the pet is due to run low on something.
+  /// Re-planned on every change and launch, so feeding the pet moves it.
   Future<void> scheduleCompanionNudge({
-    required bool doneToday,
+    required DateTime at,
     required String name,
-    bool enabled = true,
+    required String complaint,
   }) async {
     if (!_supportsNotifications) return;
     if (!_initialized) await init();
     await _plugin.cancel(_companionNudgeId);
-    if (!enabled) return;
     if (!await requestPermission(interactive: false)) return;
-
-    final now = tz.TZDateTime.now(tz.local);
-    var first = tz.TZDateTime(
-        tz.local, now.year, now.month, now.day, companionNudgeHour);
-    if (doneToday || !first.isAfter(now)) {
-      first = tz.TZDateTime(
-          tz.local, now.year, now.month, now.day + 1, companionNudgeHour);
-    }
 
     await _schedule(
       id: _companionNudgeId,
-      title: '$name is hungry',
-      body: 'Tick a habit or finish a task to keep $name healthy.',
-      when: first,
+      title: '$name is getting $complaint',
+      body: 'Finish a task to earn coins, then look after $name in the Pet tab.',
+      when: tz.TZDateTime.from(at, tz.local),
       details: const NotificationDetails(
         android: AndroidNotificationDetails(
           'companion',
           'Companion',
-          channelDescription: 'Evening nudge when nothing has been done today',
+          channelDescription: 'Reminders when your pet needs looking after',
           importance: Importance.high,
           priority: Priority.high,
         ),
@@ -934,7 +926,6 @@ class NotificationService {
         macOS: DarwinNotificationDetails(),
       ),
       payload: _companionPayload,
-      repeat: DateTimeComponents.time,
     );
   }
 
@@ -944,7 +935,7 @@ class NotificationService {
     if (payload.startsWith(_schedulePayloadPrefix)) return '/schedule';
     if (payload.startsWith(_taskDuePayloadPrefix)) return '/today';
     if (payload == _dailyReminderPayload) return '/today';
-    if (payload == _companionPayload) return '/today';
+    if (payload == _companionPayload) return '/pet';
     return null;
   }
 

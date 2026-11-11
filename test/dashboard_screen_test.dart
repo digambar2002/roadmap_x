@@ -5,6 +5,7 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:roadmap_x/core/gamification/gamification_service.dart';
+import 'package:roadmap_x/features/pet/providers/pet_provider.dart';
 import 'package:roadmap_x/core/gamification/progress_engine.dart';
 import 'package:roadmap_x/core/models/models.dart';
 import 'package:roadmap_x/features/companion/presentation/companion_card.dart';
@@ -122,15 +123,14 @@ void main() {
             ),
           ),
           habitStreakProvider.overrideWith((ref) async => 7),
-          // A bored companion: its face does not loop an animation, so
-          // pumpAndSettle can settle.
+          // No pet adopted, so no looping pet animation to block
+          // pumpAndSettle.
+          petViewProvider.overrideWithValue(null),
+          coinBalanceProvider.overrideWithValue(12),
           gameStateProvider.overrideWith((ref) async => GameState(
                 openTasksToday: 0,
                 snapshot: GameSnapshot(
-                  kind: CompanionKind.plant,
-                  name: 'Sprout',
                   level: levelFor(450),
-                  health: 45,
                   today: DayActivity(
                     day: DateTime(2026, 11, 11),
                     habitsDue: 0,
@@ -165,7 +165,8 @@ void main() {
     expect(find.textContaining('Digambar'), findsOneWidget, reason: 'greeting');
     expect(find.byType(CompanionCard), findsOneWidget,
         reason: 'the companion leads the page');
-    expect(find.textContaining('Sprout', findRichText: true), findsWidgets);
+    expect(find.textContaining('Adopt a pet', findRichText: true), findsOneWidget);
+    expect(find.text('🪙 12'), findsOneWidget);
     expect(find.text('Lv 3'), findsOneWidget);
     expect(find.text('🔥 7'), findsOneWidget, reason: 'streak on the card');
     expect(find.text("Today's tasks"), findsOneWidget);
