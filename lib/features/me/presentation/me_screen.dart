@@ -13,6 +13,7 @@ import '../../admin/providers/admin_provider.dart';
 import '../../habits/providers/habit_provider.dart';
 import '../../premium/providers/premium_provider.dart';
 import '../../settings/providers/settings_provider.dart';
+import '../../companion/providers/companion_provider.dart';
 
 /// The "Me" tab: one place for who you are and everything about the app.
 ///
@@ -152,6 +153,7 @@ class _ProfileCard extends ConsumerWidget {
     final account = ref.watch(accountProvider).valueOrNull;
     final habits = ref.watch(habitsProvider).valueOrNull?.length ?? 0;
     final streak = ref.watch(habitStreakProvider).valueOrNull ?? 0;
+    final level = ref.watch(gameStateProvider).valueOrNull?.level;
 
     final rawName = settings?.userName ?? '';
     final name = rawName.isEmpty || rawName == 'there' ? null : rawName;
@@ -168,49 +170,83 @@ class _ProfileCard extends ConsumerWidget {
         onTap: () => _editName(context, ref, name ?? ''),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: cs.primary.withValues(alpha: 0.15),
-                child: Text(
-                  initial,
-                  style: tt.titleLarge?.copyWith(
-                    color: cs.primary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      display,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.titleMedium?.copyWith(
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: cs.primary.withValues(alpha: 0.15),
+                    child: Text(
+                      initial,
+                      style: tt.titleLarge?.copyWith(
+                        color: cs.primary,
                         fontWeight: FontWeight.w700,
-                        color: name == null && email == null
-                            ? cs.onSurfaceVariant
-                            : null,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          display,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tt.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            color: name == null && email == null
+                                ? cs.onSurfaceVariant
+                                : null,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          name != null && email != null
+                              ? email
+                              : '$habits habit${habits == 1 ? '' : 's'} · '
+                                  '$streak day streak',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: tt.bodySmall
+                              ?.copyWith(color: cs.onSurfaceVariant),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.edit_outlined,
+                      size: 18, color: cs.onSurfaceVariant),
+                ],
+              ),
+              if (level != null) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
                     Text(
-                      name != null && email != null
-                          ? email
-                          : '$habits habit${habits == 1 ? '' : 's'} · '
-                              '$streak day streak',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                      'Level ${level.level} · ${level.title}',
+                      style:
+                          tt.labelLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${level.xpIntoLevel}/${level.xpForLevel} XP',
+                      style:
+                          tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
                     ),
                   ],
                 ),
-              ),
-              Icon(Icons.edit_outlined, size: 18, color: cs.onSurfaceVariant),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: level.progress,
+                    minHeight: 6,
+                    backgroundColor: cs.outline.withValues(alpha: 0.4),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

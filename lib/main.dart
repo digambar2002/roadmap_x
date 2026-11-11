@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/utils/prefs_utils.dart';
 import 'core/db/db_migration.dart';
 import 'core/db/isar_service.dart';
+import 'core/gamification/gamification_service.dart';
 import 'core/router/app_router.dart';
 import 'core/services/backup_service.dart';
 import 'core/services/notification_service.dart';
@@ -187,6 +188,7 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       reminderHour: prefs.getInt('daily_reminder_hour') ?? 9,
       reminderMinute: prefs.getInt('daily_reminder_minute') ?? 0,
     );
+    await GamificationService.instance.syncNudge();
   }
 
   @override

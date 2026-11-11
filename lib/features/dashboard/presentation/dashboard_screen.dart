@@ -23,7 +23,7 @@ import '../../premium/presentation/premium_gate.dart';
 import '../../goals/presentation/widgets/create_edit_goal_sheet.dart';
 import 'widgets/collapsible_briefing.dart';
 import 'widgets/dashboard_header.dart';
-import 'widgets/stat_strip.dart';
+import '../../companion/presentation/companion_card.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/layout/breakpoints.dart';
@@ -60,7 +60,6 @@ class DashboardScreen extends ConsumerWidget {
 
     final rawName = settingsAsync.value?.userName ?? '';
     final userName = rawName.isEmpty ? 'there' : rawName;
-    final grouped = todayGroupedAsync.valueOrNull;
     final gutter = context.pageGutter;
     final gap = context.sectionGap;
 
@@ -73,39 +72,9 @@ class DashboardScreen extends ConsumerWidget {
       date: AppDateUtils.formatDateWithDay(now),
     );
 
-    final overdue = grouped?.overdue.length ?? 0;
-    final dueToday = grouped?.dueToday.length ?? 0;
-
-    final stats = StatStrip(
-      stats: [
-        DashboardStat(
-          value: '${overdue + dueToday}',
-          label: overdue > 0 ? '$overdue overdue' : 'Due today',
-          icon: overdue > 0
-              ? Icons.error_outline_rounded
-              : Icons.task_alt_rounded,
-          color: overdue > 0 ? cs.error : const Color(0xFF5B9CF6),
-          isMuted: overdue + dueToday == 0,
-          onTap: () => context.push('/tasks'),
-        ),
-        DashboardStat(
-          value:
-              '${((dashAsync.valueOrNull?.overallPercent ?? 0) * 100).round()}%',
-          label: 'Progress',
-          icon: Icons.trending_up_rounded,
-          color: const Color(0xFF34D399),
-          onTap: () => context.push('/analytics'),
-        ),
-        DashboardStat(
-          value: '${streakAsync.valueOrNull ?? 0}',
-          label: 'Streak',
-          icon: Icons.local_fire_department_rounded,
-          color: const Color(0xFFF59E0B),
-          isMuted: (streakAsync.valueOrNull ?? 0) == 0,
-          onTap: () => context.push('/analytics'),
-        ),
-      ],
-    );
+    // The companion and the perfect-day ring replace the old stat tiles:
+    // one glance says how today is going and what is at stake.
+    final stats = CompanionCard(streak: streakAsync.valueOrNull ?? 0);
 
     final todaysTasks = TodayTasksSection(groupedAsync: todayGroupedAsync);
 

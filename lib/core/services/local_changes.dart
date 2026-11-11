@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../features/tasks/data/task_repository.dart';
+import '../gamification/gamification_service.dart';
 import '../sync/sync_service.dart';
 import '../utils/prefs_utils.dart';
 import 'backup_service.dart';
@@ -47,6 +48,8 @@ class LocalChanges {
           reminderHour: prefs.getInt('daily_reminder_hour') ?? 9,
           reminderMinute: prefs.getInt('daily_reminder_minute') ?? 0,
         );
+        // Ticking the first thing today cancels tonight's companion nudge.
+        await GamificationService.instance.syncNudge();
       } catch (_) {
         // Notifications are best-effort; the next launch re-syncs anyway.
       }

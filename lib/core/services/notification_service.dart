@@ -59,6 +59,9 @@ class NotificationService {
   static const _habitPayloadPrefix = 'habit:';
   static const _dailyReminderPayload = 'daily_reminder';
   static const _dailyReminderId = 1;
+  static const _companionNudgeId = 5;
+  static const _companionPayload = 'companion';
+  static const companionNudgeHour = 20;
   static const _testNotificationId = 999;
   static const _testScheduledNotificationId = 998;
 
@@ -179,6 +182,15 @@ class NotificationService {
           'Task Due',
           description: 'Task due date reminders',
           importance: Importance.max,
+          playSound: true,
+          enableVibration: true,
+          showBadge: true,
+        ),
+        const AndroidNotificationChannel(
+          'companion',
+          'Companion',
+          description: 'Evening nudge when nothing has been done today',
+          importance: Importance.high,
           playSound: true,
           enableVibration: true,
           showBadge: true,
@@ -880,12 +892,59 @@ class NotificationService {
   /// missing; a no-op elsewhere.
   Future<void> openExactAlarmSettings() => _ensureExactAlarmPermission();
 
+  /// The companion's evening nudge, repeating daily at 8 pm.
+  ///
+  /// When something has already been done today, the first one is pushed to
+  /// tomorrow, so it only ever fires on a day that still needs it. Re-run on
+  /// every change and on launch; a user who stops opening the app keeps
+  /// getting the nightly reminder because it repeats.
+  Future<void> scheduleCompanionNudge({
+    required bool doneToday,
+    required String name,
+    bool enabled = true,
+  }) async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_companionNudgeId);
+    if (!enabled) return;
+    if (!await requestPermission(interactive: false)) return;
+
+    final now = tz.TZDateTime.now(tz.local);
+    var first = tz.TZDateTime(
+        tz.local, now.year, now.month, now.day, companionNudgeHour);
+    if (doneToday || !first.isAfter(now)) {
+      first = tz.TZDateTime(
+          tz.local, now.year, now.month, now.day + 1, companionNudgeHour);
+    }
+
+    await _schedule(
+      id: _companionNudgeId,
+      title: '$name is hungry',
+      body: 'Tick a habit or finish a task to keep $name healthy.',
+      when: first,
+      details: const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'companion',
+          'Companion',
+          channelDescription: 'Evening nudge when nothing has been done today',
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+        iOS: DarwinNotificationDetails(),
+        macOS: DarwinNotificationDetails(),
+      ),
+      payload: _companionPayload,
+      repeat: DateTimeComponents.time,
+    );
+  }
+
   /// Maps a tapped notification payload to the route that should open.
   static String? routeForPayload(String payload) {
     if (payload.startsWith(_habitPayloadPrefix)) return '/habits';
     if (payload.startsWith(_schedulePayloadPrefix)) return '/schedule';
     if (payload.startsWith(_taskDuePayloadPrefix)) return '/today';
     if (payload == _dailyReminderPayload) return '/today';
+    if (payload == _companionPayload) return '/today';
     return null;
   }
 

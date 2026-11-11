@@ -4,7 +4,11 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:roadmap_x/core/gamification/gamification_service.dart';
+import 'package:roadmap_x/core/gamification/progress_engine.dart';
 import 'package:roadmap_x/core/models/models.dart';
+import 'package:roadmap_x/features/companion/presentation/companion_card.dart';
+import 'package:roadmap_x/features/companion/providers/companion_provider.dart';
 import 'package:roadmap_x/core/services/shared_preferences_provider.dart';
 import 'package:roadmap_x/core/theme/app_theme.dart';
 import 'package:roadmap_x/features/ai_coach/presentation/daily_briefing_card.dart';
@@ -118,6 +122,24 @@ void main() {
             ),
           ),
           habitStreakProvider.overrideWith((ref) async => 7),
+          // A bored companion: its face does not loop an animation, so
+          // pumpAndSettle can settle.
+          gameStateProvider.overrideWith((ref) async => GameState(
+                openTasksToday: 0,
+                snapshot: GameSnapshot(
+                  kind: CompanionKind.plant,
+                  name: 'Sprout',
+                  level: levelFor(450),
+                  health: 45,
+                  today: DayActivity(
+                    day: DateTime(2026, 11, 11),
+                    habitsDue: 0,
+                    habitsDone: 0,
+                    tasksDone: 0,
+                  ),
+                  recentDays: const [],
+                ),
+              )),
           hasAiCoachProvider.overrideWithValue(hasAi),
           scheduleForWeekdayProvider
               .overrideWith((ref, weekday) => Stream.value(schedule)),
@@ -141,9 +163,11 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.textContaining('Digambar'), findsOneWidget, reason: 'greeting');
-    expect(find.text('Due today'), findsOneWidget, reason: 'task stat');
-    expect(find.text('42%'), findsOneWidget, reason: 'progress stat');
-    expect(find.text('7'), findsWidgets, reason: 'streak stat');
+    expect(find.byType(CompanionCard), findsOneWidget,
+        reason: 'the companion leads the page');
+    expect(find.textContaining('Sprout', findRichText: true), findsWidgets);
+    expect(find.text('Lv 3'), findsOneWidget);
+    expect(find.text('🔥 7'), findsOneWidget, reason: 'streak on the card');
     expect(find.text("Today's tasks"), findsOneWidget);
     expect(find.byType(DailyHabitsSection), findsOneWidget);
     expect(find.byType(FloatingActionButton), findsOneWidget,

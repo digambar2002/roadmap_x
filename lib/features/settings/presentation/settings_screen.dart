@@ -7,6 +7,8 @@ import 'package:hooks_riverpod/hooks_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/services/backup_service.dart';
+import '../../../core/services/shared_preferences_provider.dart';
+import '../../../core/gamification/gamification_service.dart';
 import '../../../core/services/data_export_service.dart';
 import '../../../core/services/notification_service.dart';
 import '../../../shared/widgets/confirmation_dialog.dart';
@@ -109,6 +111,8 @@ class SettingsScreen extends ConsumerWidget {
                   );
                 },
               ),
+              const SizedBox(height: 10),
+              const _CompanionReminderTile(),
 
               const SizedBox(height: 24),
 
@@ -1092,6 +1096,45 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// On/off for the companion's 8 pm nudge on days nothing has been done.
+class _CompanionReminderTile extends ConsumerStatefulWidget {
+  const _CompanionReminderTile();
+
+  @override
+  ConsumerState<_CompanionReminderTile> createState() =>
+      _CompanionReminderTileState();
+}
+
+class _CompanionReminderTileState
+    extends ConsumerState<_CompanionReminderTile> {
+  late bool _enabled = ref
+          .read(sharedPreferencesProvider)
+          .getBool(GamificationService.remindersKey) ??
+      true;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return _SettingsSurface(
+      child: SwitchListTile(
+        secondary: Icon(Icons.spa_outlined, color: cs.onSurfaceVariant),
+        title: const Text('Companion reminder'),
+        subtitle: const Text(
+          'A nudge at 8 pm on days nothing has been done yet.',
+        ),
+        value: _enabled,
+        onChanged: (value) async {
+          setState(() => _enabled = value);
+          await ref
+              .read(sharedPreferencesProvider)
+              .setBool(GamificationService.remindersKey, value);
+          await GamificationService.instance.syncNudge();
+        },
       ),
     );
   }
