@@ -5,6 +5,7 @@ import '../../../core/models/models.dart';
 import '../../../core/services/local_changes.dart';
 import '../../../core/models/today_task.dart';
 import '../../../core/services/sound_service.dart';
+import '../domain/repeat_rule.dart';
 
 class TaskRepository {
   TaskRepository._();
@@ -133,16 +134,22 @@ class TaskRepository {
   }
 
   // ── Writes ────────────────────────────────────────────────
+  /// Creates a task. With no [milestoneId] it goes to the Inbox: quick
+  /// capture should never require choosing a goal first.
   Future<Task> create({
-    required int milestoneId,
+    int? milestoneId,
     required String text,
     int priority = 0,
     DateTime? dueDate,
     String? note,
+    String? repeat,
   }) async {
-    final ms = await _db.milestones.get(milestoneId);
-    if (ms == null || ms.deletedAt != null) {
-      throw StateError('Milestone not found: $milestoneId');
+    Milestone? ms;
+    if (milestoneId != null) {
+      ms = await _db.milestones.get(milestoneId);
+      if (ms == null || ms.deletedAt != null) {
+        throw StateError('Milestone not found: $milestoneId');
+      }
     }
 
     final now = DateTime.now();
@@ -153,20 +160,70 @@ class TaskRepository {
       ..dueDate = dueDate
       ..priority = priority
       ..note = note
+      ..repeat = repeat
       ..createdAt = now
       ..completedAt = null
-      ..sortOrder = await _nextSortOrder(milestoneId)
+      ..sortOrder = ms == null ? 0 : await _nextSortOrder(ms.id)
       // Kept alongside the link so the row is self-describing on the wire.
-      ..milestoneUid = ms.uid
+      ..milestoneUid = ms?.uid ?? ''
       ..updatedAt = now;
-    task.milestone.value = ms;
+    if (ms != null) task.milestone.value = ms;
 
+    await _db.writeTxn(() async {
+      await _db.tasks.put(task);
+      if (ms != null) await task.milestone.save();
+    });
+    await LocalChanges.instance.notify();
+    return task;
+  }
+
+  /// Moves a task into a milestone, or back to the Inbox with null.
+  Future<void> moveToMilestone(int taskId, int? milestoneId) async {
+    final task = await getById(taskId);
+    if (task == null) return;
+    Milestone? ms;
+    if (milestoneId != null) {
+      ms = await _db.milestones.get(milestoneId);
+      if (ms == null || ms.deletedAt != null) {
+        throw StateError('Milestone not found: $milestoneId');
+      }
+    }
+    task
+      ..milestoneUid = ms?.uid ?? ''
+      ..sortOrder = ms == null ? 0 : await _nextSortOrder(ms.id)
+      ..updatedAt = DateTime.now();
+    task.milestone.value = ms;
     await _db.writeTxn(() async {
       await _db.tasks.put(task);
       await task.milestone.save();
     });
     await LocalChanges.instance.notify();
-    return task;
+  }
+
+  /// Tasks by uid, in the order given; missing or deleted ones are left out.
+  Future<List<Task>> getByUids(List<String> uids) async {
+    final out = <Task>[];
+    for (final uid in uids) {
+      final t = await _db.tasks
+          .filter()
+          .uidEqualTo(uid)
+          .deletedAtIsNull()
+          .findFirst();
+      if (t != null) out.add(t);
+    }
+    return out;
+  }
+
+  /// Open tasks that belong to no goal yet.
+  Future<List<Task>> getInbox() async {
+    final tasks = await _db.tasks
+        .filter()
+        .deletedAtIsNull()
+        .isCompletedEqualTo(false)
+        .milestoneUidEqualTo('')
+        .findAll();
+    tasks.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return tasks;
   }
 
   /// Applies the editable fields of [edited] onto the current row.
@@ -181,7 +238,8 @@ class TaskRepository {
       ..text = edited.text
       ..priority = edited.priority
       ..dueDate = edited.dueDate
-      ..note = edited.note;
+      ..note = edited.note
+      ..repeat = edited.repeat;
     if (edited.isCompleted && !fresh.isCompleted) {
       fresh
         ..isCompleted = true
@@ -228,10 +286,75 @@ class TaskRepository {
     task.isCompleted = !task.isCompleted;
     task.completedAt = task.isCompleted ? now : null;
     task.updatedAt = now;
-    await _db.writeTxn(() async => _db.tasks.put(task));
+
+    // Repeating tasks: completing one schedules the next occurrence, and
+    // un-completing it removes that occurrence again, so a mis-tap never
+    // leaves a duplicate behind. The completed row stays as history (and
+    // keeps counting for XP).
+    final rule = parseRepeatRule(task.repeat);
+    Task? next;
+    Task? undo;
+    if (rule != null) {
+      final base = task.dueDate ?? DateTime(now.year, now.month, now.day);
+      final nextDue = rule.next(base);
+      final sibling = await _openOccurrence(task, nextDue);
+      if (task.isCompleted && sibling == null) {
+        next = Task()
+          ..uid = _uuid.v4()
+          ..text = task.text
+          ..isCompleted = false
+          ..dueDate = nextDue
+          ..priority = task.priority
+          ..note = task.note
+          ..repeat = task.repeat
+          ..createdAt = now
+          ..completedAt = null
+          ..sortOrder = task.sortOrder
+          ..milestoneUid = task.milestoneUid
+          ..updatedAt = now;
+        await task.milestone.load();
+        if (task.milestone.value != null) {
+          next.milestone.value = task.milestone.value;
+        }
+      } else if (!task.isCompleted && sibling != null) {
+        undo = sibling
+          ..deletedAt = now
+          ..updatedAt = now;
+      }
+    }
+
+    await _db.writeTxn(() async {
+      await _db.tasks.put(task);
+      if (next != null) {
+        await _db.tasks.put(next);
+        await next.milestone.save();
+      }
+      if (undo != null) await _db.tasks.put(undo);
+    });
     if (task.isCompleted && !silent) SoundService.instance.play(Sfx.done);
     await LocalChanges.instance.notify();
   }
+
+  /// The not-yet-done next occurrence of a repeating [task], if any.
+  Future<Task?> _openOccurrence(Task task, DateTime due) async {
+    final candidates = await _db.tasks
+        .filter()
+        .deletedAtIsNull()
+        .isCompletedEqualTo(false)
+        .milestoneUidEqualTo(task.milestoneUid)
+        .textEqualTo(task.text)
+        .repeatEqualTo(task.repeat)
+        .findAll();
+    for (final c in candidates) {
+      if (c.id != task.id && c.dueDate != null && _sameDay(c.dueDate!, due)) {
+        return c;
+      }
+    }
+    return null;
+  }
+
+  static bool _sameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
 
   Future<void> delete(int id) async {
     final task = await getById(id);

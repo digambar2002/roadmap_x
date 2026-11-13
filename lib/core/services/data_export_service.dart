@@ -136,6 +136,7 @@ class DataExportService {
         'createdAt': task.createdAt.toIso8601String(),
         'completedAt': task.completedAt?.toIso8601String(),
         'sortOrder': task.sortOrder,
+        'repeat': task.repeat,
         'updatedAt': task.updatedAt.toIso8601String(),
         'deletedAt': task.deletedAt?.toIso8601String(),
       };
@@ -371,7 +372,9 @@ class DataExportService {
 
         final milestoneUid = (item['milestoneUid'] as String?) ?? '';
         final parent = milestonesByUid[milestoneUid];
-        if (parent == null) continue;
+        // An empty milestone uid is an Inbox task and is kept; a named
+        // milestone that doesn't exist here is an orphan and is skipped.
+        if (milestoneUid.isNotEmpty && parent == null) continue;
 
         final incomingUpdatedAt = _date(item['updatedAt']);
         final deletedAt = _date(item['deletedAt']);
@@ -394,12 +397,15 @@ class DataExportService {
           ..createdAt = createdAt
           ..completedAt = _date(item['completedAt'])
           ..sortOrder = (item['sortOrder'] as int?) ?? 0
+          ..repeat = item['repeat'] as String?
           ..milestoneUid = milestoneUid
           ..updatedAt = incomingUpdatedAt ?? createdAt
           ..deletedAt = deletedAt;
         await db.tasks.put(task);
-        task.milestone.value = parent;
-        await task.milestone.save();
+        if (parent != null) {
+          task.milestone.value = parent;
+          await task.milestone.save();
+        }
         tasksImported++;
       }
 

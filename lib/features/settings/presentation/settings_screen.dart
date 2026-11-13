@@ -27,6 +27,8 @@ import '../../../core/services/local_changes.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/theme/colors.dart';
 import '../../../core/services/sound_service.dart';
+import '../../ritual/data/ritual_settings.dart';
+import '../../../core/ai/ai_access.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -115,6 +117,8 @@ class SettingsScreen extends ConsumerWidget {
                   );
                 },
               ),
+              const SizedBox(height: 10),
+              const _RitualRemindersTile(),
               const SizedBox(height: 10),
               const _CompanionReminderTile(),
 
@@ -1038,6 +1042,17 @@ class _AiConfigurationTileState extends ConsumerState<_AiConfigurationTile> {
             ],
           ),
           const SizedBox(height: 4),
+          if (!hasKey && ref.watch(aiAccessProvider) == AiAccess.premium) ...[
+            Text(
+              'AI is included with your Premium plan; no key needed. Add your '
+              'own key only if you want to use your own Google quota.',
+              style: tt.bodySmall?.copyWith(
+                color: const Color(0xFF34D399),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
           Text(
             'Your key stays on this device and is never included in backups '
             'or sync.',
@@ -1170,6 +1185,93 @@ class _SoundTileState extends State<_SoundTile> {
           setState(() => _enabled = value);
           await SoundService.instance.setEnabled(value);
         },
+      ),
+    );
+  }
+}
+
+/// Morning "plan your day" and evening "wrap up" reminders.
+class _RitualRemindersTile extends ConsumerStatefulWidget {
+  const _RitualRemindersTile();
+
+  @override
+  ConsumerState<_RitualRemindersTile> createState() =>
+      _RitualRemindersTileState();
+}
+
+class _RitualRemindersTileState extends ConsumerState<_RitualRemindersTile> {
+  String _fmt(BuildContext context, int minutes) =>
+      TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60).format(context);
+
+  Future<int?> _pick(int current) async {
+    final t = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: current ~/ 60, minute: current % 60),
+    );
+    return t == null ? null : t.hour * 60 + t.minute;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final morningOn = RitualSettings.morningEnabled(prefs);
+    final eveningOn = RitualSettings.eveningEnabled(prefs);
+    final morningAt = RitualSettings.morningAt(prefs);
+    final eveningAt = RitualSettings.eveningAt(prefs);
+
+    return _SettingsSurface(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: const Text('☀️', style: TextStyle(fontSize: 20)),
+            title: const Text('Morning plan'),
+            subtitle: Text('Pick your top 3 · ${_fmt(context, morningAt)}'),
+            value: morningOn,
+            onChanged: (v) async {
+              await RitualSettings.setMorning(prefs, enabled: v);
+              setState(() {});
+            },
+          ),
+          if (morningOn)
+            ListTile(
+              contentPadding: const EdgeInsets.only(left: 72, right: 16),
+              dense: true,
+              title: const Text('Morning time'),
+              trailing: Text(_fmt(context, morningAt),
+                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+              onTap: () async {
+                final m = await _pick(morningAt);
+                if (m == null) return;
+                await RitualSettings.setMorning(prefs, minutes: m);
+                setState(() {});
+              },
+            ),
+          SwitchListTile(
+            secondary: const Text('🌙', style: TextStyle(fontSize: 20)),
+            title: const Text('Evening wrap-up'),
+            subtitle: Text('Close the day · ${_fmt(context, eveningAt)}'),
+            value: eveningOn,
+            onChanged: (v) async {
+              await RitualSettings.setEvening(prefs, enabled: v);
+              setState(() {});
+            },
+          ),
+          if (eveningOn)
+            ListTile(
+              contentPadding: const EdgeInsets.only(left: 72, right: 16),
+              dense: true,
+              title: const Text('Evening time'),
+              trailing: Text(_fmt(context, eveningAt),
+                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+              onTap: () async {
+                final m = await _pick(eveningAt);
+                if (m == null) return;
+                await RitualSettings.setEvening(prefs, minutes: m);
+                setState(() {});
+              },
+            ),
+        ],
       ),
     );
   }

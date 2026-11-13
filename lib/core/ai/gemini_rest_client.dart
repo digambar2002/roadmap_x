@@ -39,11 +39,25 @@ class GeminiApiException implements Exception {
 /// Here the request carries only widely supported settings, thought parts
 /// are skipped, and every failure keeps Google's status and message.
 class GeminiRestClient {
-  GeminiRestClient({required this.apiKey, http.Client? client})
-      : _client = client ?? http.Client();
+  GeminiRestClient({
+    required this.apiKey,
+    http.Client? client,
+    this.proxyUrl,
+    this.authToken,
+  }) : _client = client ?? http.Client();
 
+  /// The user's own key. Empty when calls go through [proxyUrl].
   final String apiKey;
   final http.Client _client;
+
+  /// The app's server-side AI endpoint (a Supabase Edge Function holding the
+  /// Gemini key). When set, requests go there with the signed-in user's
+  /// token instead of to Google with a personal key, so Premium users never
+  /// need a key of their own. The function replies in Gemini's own format.
+  final Uri? proxyUrl;
+  final Future<String?> Function()? authToken;
+
+  bool get usesProxy => proxyUrl != null;
 
   static const _host = 'generativelanguage.googleapis.com';
 
@@ -57,8 +71,7 @@ class GeminiRestClient {
     int maxOutputTokens = 8192,
     Duration timeout = const Duration(seconds: 60),
   }) async {
-    final uri = Uri.https(_host, '/v1beta/models/$model:generateContent');
-    final body = jsonEncode({
+    final request = {
       'contents': [
         {
           'role': 'user',
@@ -73,18 +86,40 @@ class GeminiRestClient {
         'maxOutputTokens': maxOutputTokens,
         'responseMimeType': 'application/json',
       },
-    });
+    };
 
-    final response = await _client
-        .post(
-          uri,
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey,
-          },
-          body: body,
-        )
-        .timeout(timeout);
+    final http.Response response;
+    if (proxyUrl != null) {
+      final token = await authToken?.call();
+      if (token == null || token.isEmpty) {
+        throw const GeminiApiException(
+          httpStatus: 401,
+          status: 'UNAUTHENTICATED',
+          message: 'Sign in to use the AI included with Premium.',
+        );
+      }
+      response = await _client
+          .post(
+            proxyUrl!,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'model': model, 'request': request}),
+          )
+          .timeout(timeout);
+    } else {
+      response = await _client
+          .post(
+            Uri.https(_host, '/v1beta/models/$model:generateContent'),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': apiKey,
+            },
+            body: jsonEncode(request),
+          )
+          .timeout(timeout);
+    }
 
     // Always UTF-8: without a charset header `response.body` falls back to
     // Latin-1, which garbles emoji and non-English text.

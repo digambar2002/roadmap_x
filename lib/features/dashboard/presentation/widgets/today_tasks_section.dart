@@ -126,6 +126,34 @@ class TodayTasksSection extends ConsumerWidget {
                     ),
                   ),
               ],
+              // Captured tasks with no date or goal yet: a gentle nudge to
+              // sort them, without crowding today's list.
+              if (data.inbox.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(8),
+                    onTap: () => context.push('/tasks'),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 6, horizontal: 4),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.inbox_outlined,
+                              size: 16, color: Color(0xFFA78BFA)),
+                          const SizedBox(width: 6),
+                          Text(
+                            'Inbox · ${data.inbox.length} to sort',
+                            style: tt.bodySmall?.copyWith(
+                              color: const Color(0xFFA78BFA),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         );
@@ -197,7 +225,7 @@ class _TaskRow extends ConsumerWidget {
                         const SizedBox(height: 2),
                         Text(
                           '${taskCtx.goal?.emoji ?? ''} '
-                          '${taskCtx.goal?.name ?? 'Unlinked'}',
+                          '${taskCtx.goal?.name ?? 'Inbox'}',
                           style: tt.bodySmall
                               ?.copyWith(color: cs.onSurfaceVariant),
                           maxLines: 1,
@@ -207,6 +235,11 @@ class _TaskRow extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  if (task.repeat != null)
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4, right: 2),
+                      child: Icon(Icons.repeat_rounded, size: 15),
+                    ),
                   DueDateBadge(contextData: taskCtx),
                 ],
               ),

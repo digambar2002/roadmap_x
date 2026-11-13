@@ -60,6 +60,12 @@ class NotificationService {
   static const _dailyReminderPayload = 'daily_reminder';
   static const _dailyReminderId = 1;
   static const _companionNudgeId = 5;
+  static const _morningPlanId = 6;
+  static const _eveningWrapId = 7;
+  static const _focusEndId = 8;
+  static const _focusPayload = 'focus';
+  static const _planPayload = 'ritual_plan';
+  static const _wrapPayload = 'ritual_wrap';
   static const _companionPayload = 'companion';
   static const _testNotificationId = 999;
   static const _testScheduledNotificationId = 998;
@@ -891,6 +897,77 @@ class NotificationService {
   /// missing; a no-op elsewhere.
   Future<void> openExactAlarmSettings() => _ensureExactAlarmPermission();
 
+  static const _ritualDetails = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'daily_reminder',
+      'Daily Reminder',
+      channelDescription: 'Daily goal progress reminder',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+    macOS: DarwinNotificationDetails(),
+  );
+
+  /// The morning "plan your day" and evening "wrap up" reminders, each
+  /// daily at the given time, or off when null. Never prompts.
+  Future<void> scheduleRituals({
+    ({int hour, int minute})? morning,
+    ({int hour, int minute})? evening,
+  }) async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_morningPlanId);
+    await _plugin.cancel(_eveningWrapId);
+    if (!await requestPermission(interactive: false)) return;
+    if (morning != null) {
+      await _schedule(
+        id: _morningPlanId,
+        title: 'Plan your day ☀️',
+        body: 'Pick your top 3 for today. Takes 2 minutes.',
+        when: _nextDailyTime(morning.hour, morning.minute),
+        details: _ritualDetails,
+        payload: _planPayload,
+        repeat: DateTimeComponents.time,
+      );
+    }
+    if (evening != null) {
+      await _schedule(
+        id: _eveningWrapId,
+        title: 'Wrap up your day 🌙',
+        body: 'Move what is left to tomorrow and note how today went.',
+        when: _nextDailyTime(evening.hour, evening.minute),
+        details: _ritualDetails,
+        payload: _wrapPayload,
+        repeat: DateTimeComponents.time,
+      );
+    }
+  }
+
+  /// Tells the user a focus session is over, even if they left the app.
+  Future<void> scheduleFocusEnd(DateTime at, {String? taskText}) async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_focusEndId);
+    if (!await requestPermission(interactive: false)) return;
+    await _schedule(
+      id: _focusEndId,
+      title: 'Focus session complete 🎉',
+      body: taskText == null
+          ? 'Nice work. Take a short break.'
+          : 'Nice work on "$taskText". Take a short break.',
+      when: tz.TZDateTime.from(at, tz.local),
+      details: _testDetails,
+      payload: _focusPayload,
+    );
+  }
+
+  Future<void> cancelFocusEnd() async {
+    if (!_supportsNotifications) return;
+    if (!_initialized) await init();
+    await _plugin.cancel(_focusEndId);
+  }
+
   Future<void> cancelCompanionNudge() async {
     if (!_supportsNotifications) return;
     if (!_initialized) await init();
@@ -936,6 +1013,9 @@ class NotificationService {
     if (payload.startsWith(_taskDuePayloadPrefix)) return '/today';
     if (payload == _dailyReminderPayload) return '/today';
     if (payload == _companionPayload) return '/pet';
+    if (payload == _planPayload) return '/today?ritual=plan';
+    if (payload == _focusPayload) return '/focus-timer';
+    if (payload == _wrapPayload) return '/today?ritual=wrap';
     return null;
   }
 

@@ -148,13 +148,27 @@ class TodayScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                           ],
-                          if (data.noDueDate.isNotEmpty) ...[
+                          if (data.inbox.isNotEmpty) ...[
+                            _SectionHeader(
+                              title: 'Inbox',
+                              color: const Color(0xFFA78BFA),
+                              count: data.inbox.length,
+                            ),
+                            ...data.inbox.map(
+                              (ctx) => _TodayTaskTile(
+                                taskCtx: ctx,
+                                onToggle: () => _toggleTask(ref, ctx),
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                          ],
+                          if (data.upNext.isNotEmpty) ...[
                             _SectionHeader(
                               title: 'Up Next',
                               color: cs.onSurfaceVariant,
-                              count: data.noDueDate.length,
+                              count: data.upNext.length,
                             ),
-                            ...data.noDueDate.map(
+                            ...data.upNext.map(
                               (ctx) => _TodayTaskTile(
                                 taskCtx: ctx,
                                 onToggle: () => _toggleTask(ref, ctx),
@@ -381,7 +395,7 @@ class _TodayTaskTile extends ConsumerWidget {
                         const SizedBox(height: 2),
                         Text(
                           '${taskCtx.goal?.emoji ?? ''} '
-                          '${taskCtx.goal?.name ?? 'Unlinked'} · '
+                          '${taskCtx.goal?.name ?? 'Inbox'} · '
                           '${taskCtx.milestone?.title ?? ''}',
                           style: tt.bodySmall
                               ?.copyWith(color: cs.onSurfaceVariant),
@@ -392,6 +406,11 @@ class _TodayTaskTile extends ConsumerWidget {
                     ),
                   ),
                   if (showDueDate || taskCtx.isOverdue)
+                    if (task.repeat != null)
+                      const Padding(
+                        padding: EdgeInsets.only(left: 4, right: 2),
+                        child: Icon(Icons.repeat_rounded, size: 15),
+                      ),
                     DueDateBadge(contextData: taskCtx),
                 ],
               ),

@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../core/ai/gemini_service.dart';
-import '../../settings/providers/ai_settings_provider.dart';
+import '../../ai_coach/providers/ai_coach_provider.dart';
 import '../providers/ai_goal_provider.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 
@@ -108,8 +108,8 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
     final notifier = ref.read(aiGoalGeneratorProvider.notifier);
     // Watch the notifier state (not the repository provider, which never
     // notifies) so the sheet rebuilds when the key is saved or cleared.
-    final aiSettings = ref.watch(aiSettingsNotifierProvider);
-    final hasKey = aiSettings.apiKey?.isNotEmpty ?? false;
+    // Own key, or Premium through the app's server.
+    final hasKey = ref.watch(hasAiCoachProvider);
 
     return SafeArea(
       child: Padding(

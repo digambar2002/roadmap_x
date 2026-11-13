@@ -22,6 +22,7 @@ import 'widgets/goal_template_sheet.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../ai_goal/presentation/paste_plan_sheet.dart';
+import 'widgets/goal_pace_widgets.dart';
 
 class GoalsScreen extends ConsumerWidget {
   const GoalsScreen({super.key});
@@ -524,7 +525,9 @@ class _GoalCard extends ConsumerWidget {
                         color: goalColor,
                         height: 5,
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 8),
+                      GoalPaceLine(goalId: goal.id),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(Icons.flag_outlined,

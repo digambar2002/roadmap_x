@@ -9,6 +9,7 @@ import '../../../shared/widgets/item_actions.dart';
 import '../../analytics/providers/activity_provider.dart';
 import '../../goals/presentation/widgets/create_edit_task_sheet.dart';
 import '../data/task_repository.dart';
+import 'quick_add_task_sheet.dart';
 
 /// The actions a task offers, shared by every screen that lists tasks
 /// outside their goal (Today, the Tasks planner). Same list, same order,
@@ -19,7 +20,6 @@ class TaskActions {
   /// Opening a task means opening it for editing — the task is the item.
   static void edit(BuildContext context, TodayTaskContext ctx) {
     final milestoneId = ctx.milestone?.id ?? ctx.task.milestone.value?.id;
-    if (milestoneId == null) return;
     final cs = Theme.of(context).colorScheme;
     showAdaptiveSheet(
       context: context,
@@ -128,6 +128,23 @@ class TaskActions {
           icon: Icons.event_busy_outlined,
           onSelected: () => _setDue(ref, ctx, null),
         ),
+      if (!task.isCompleted)
+        ItemAction(
+          label: 'Focus on this',
+          icon: Icons.timer_outlined,
+          onSelected: () => context.push('/focus-timer?task=${task.id}'),
+        ),
+      ItemAction(
+        label: goalId == null ? 'Move to a goal…' : 'Move to…',
+        icon: Icons.drive_file_move_outline,
+        onSelected: () async {
+          final picked = await pickMilestone(context);
+          if (picked == null) return;
+          await TaskRepository.instance
+              .moveToMilestone(ctx.task.id, picked.id == -1 ? null : picked.id);
+          if (ref.context.mounted) bumpActivityTick(ref);
+        },
+      ),
       if (goalId != null)
         ItemAction(
           label: 'Open goal',

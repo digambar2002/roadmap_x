@@ -146,7 +146,13 @@ class Task {
   late DateTime? completedAt;
   late int sortOrder;
 
-  /// Denormalized parent uid — see [Milestone.goalUid].
+  /// How the task repeats ("daily", "weekdays", "weekly", "monthly",
+  /// "yearly"), or null for a one-off. Completing a repeating task creates
+  /// the next occurrence.
+  String? repeat;
+
+  /// Denormalized parent uid — see [Milestone.goalUid]. Empty for a task in
+  /// the Inbox, which belongs to no goal yet.
   @Index()
   late String milestoneUid;
 

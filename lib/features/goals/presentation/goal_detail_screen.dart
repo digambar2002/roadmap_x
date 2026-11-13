@@ -31,6 +31,7 @@ import '../../premium/providers/premium_provider.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/services/sound_service.dart';
+import 'widgets/goal_pace_widgets.dart';
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
   final int goalId;
@@ -199,6 +200,12 @@ class _GoalDetailBody extends ConsumerWidget {
                 ),
               ),
 
+              SliverToBoxAdapter(
+                child: GoalPaceCard(
+                  goalId: goal.id,
+                  targetDate: goal.targetDate,
+                ),
+              ),
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
@@ -919,6 +926,11 @@ class _TaskRow extends ConsumerWidget {
                 ),
               ),
               // Priority dot
+              if (task.repeat != null)
+                const Padding(
+                  padding: EdgeInsets.only(left: 4, right: 2),
+                  child: Icon(Icons.repeat_rounded, size: 15),
+                ),
               _PriorityDot(priority: task.priority),
               // Note icon
               if (task.note != null && task.note!.isNotEmpty)

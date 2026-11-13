@@ -162,7 +162,14 @@ class TodayTasksWidgetProvider : AppWidgetProvider() {
                 }
                 val todayPendingIntent = PendingIntent.getActivity(context, 0, launchTodayIntent, flagImmutable)
                 views.setOnClickPendingIntent(R.id.widget_header, todayPendingIntent)
-                views.setOnClickPendingIntent(R.id.widget_add_btn, todayPendingIntent)
+                // "+" opens quick capture straight away.
+                val addIntent = Intent(context, MainActivity::class.java).apply {
+                    action = Intent.ACTION_VIEW
+                    data = Uri.parse("roadmapx://roadmapx/add")
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                val addPendingIntent = PendingIntent.getActivity(context, 3, addIntent, flagImmutable)
+                views.setOnClickPendingIntent(R.id.widget_add_btn, addPendingIntent)
                 views.setOnClickPendingIntent(R.id.widget_empty_view, todayPendingIntent)
 
                 // Refresh button -> Broadcast ACTION_REFRESH

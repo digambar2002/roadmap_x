@@ -9,6 +9,7 @@ import '../services/notification_service.dart';
 import '../../features/pet/data/pet_repository.dart';
 import '../../features/pet/domain/pet_domain.dart';
 import 'progress_engine.dart';
+import '../../features/focus/data/focus_sessions.dart';
 
 /// Everything the Today card and the Me tab show about progress.
 class GameSnapshot {
@@ -16,7 +17,11 @@ class GameSnapshot {
     required this.level,
     required this.today,
     required this.recentDays,
+    this.focusMinutesToday = 0,
   });
+
+  /// Minutes of finished focus sessions today; they earn XP too.
+  final int focusMinutesToday;
 
   final LevelInfo level;
 
@@ -132,6 +137,7 @@ class GamificationService {
       perfectDays: perfectDays,
       milestonesDone: doneMilestones.length,
       goalsDone: goalsDone,
+      focusMinutes: await FocusSessions.instance.totalMinutes(),
     );
 
     final recent = <DayActivity>[
@@ -142,6 +148,7 @@ class GamificationService {
     return GameSnapshot(
       level: levelFor(xp),
       today: activityOn(today),
+      focusMinutesToday: await FocusSessions.instance.minutesOn(today),
       recentDays: recent,
     );
   }

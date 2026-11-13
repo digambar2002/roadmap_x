@@ -143,3 +143,25 @@ It needs to write `profiles`, which RLS only allows for admins — so it must ru
 as a signed-in admin. A static hosted page could only do that by embedding a
 `service_role` key, which bypasses every policy in the database and is unsafe
 to ship in any client.
+
+## AI for Premium users (Gemini proxy)
+
+Premium users get AI without creating their own Gemini API key. The app
+calls the `gemini` Edge Function with the user's session; the function checks
+`is_premium()`, counts the request against a daily per-user cap
+(`use_ai_request()`, default 60/day), and forwards it to Gemini with the
+project's key, which never ships in the app. Users who enter their own key
+in Settings keep calling Google directly.
+
+One-time setup:
+
+```sh
+# 1. Run the latest schema.sql in the SQL editor (adds ai_usage + use_ai_request).
+# 2. Store the key and deploy the function:
+supabase secrets set GEMINI_API_KEY=your-gemini-key
+supabase secrets set AI_DAILY_CAP=60          # optional
+supabase functions deploy gemini
+```
+
+Use a Gemini key from a billing-enabled Google project: the free tier is far
+too small to share between customers.

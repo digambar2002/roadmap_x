@@ -35,6 +35,9 @@ class XpRules {
   static const perfectDay = 50;
   static const milestone = 100;
   static const goal = 500;
+
+  /// Per focused minute: a 25-minute session is worth 25 XP (5 coins).
+  static const focusMinute = 1;
 }
 
 int computeXp({
@@ -43,12 +46,14 @@ int computeXp({
   required int perfectDays,
   required int milestonesDone,
   required int goalsDone,
+  int focusMinutes = 0,
 }) =>
     habitTicks * XpRules.habit +
     tasksDone * XpRules.task +
     perfectDays * XpRules.perfectDay +
     milestonesDone * XpRules.milestone +
-    goalsDone * XpRules.goal;
+    goalsDone * XpRules.goal +
+    focusMinutes * XpRules.focusMinute;
 
 class LevelInfo {
   const LevelInfo({

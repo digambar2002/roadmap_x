@@ -208,7 +208,9 @@ void main() {
     await tester.tap(find.byType(FloatingActionButton));
     await tester.pumpAndSettle();
     for (final label in [
-      'Tasks for today',
+      'Task',
+      'Focus session',
+      'Tasks from goals',
       'Habit',
       'Goal',
       'Goal with AI',

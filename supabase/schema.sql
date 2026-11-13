@@ -269,3 +269,54 @@ end $$;
 
 revoke all on function public.grant_premium(text, int) from public;
 grant execute on function public.grant_premium(text, int) to authenticated;
+
+-- ─────────────────────────────────────────────────────────────
+-- ai_usage — per-user daily AI request counter for the Gemini proxy
+-- ─────────────────────────────────────────────────────────────
+-- The `gemini` Edge Function calls use_ai_request() before forwarding each
+-- Premium request, so one account can't run up the shared Gemini bill.
+
+create table if not exists public.ai_usage (
+  user_id uuid not null references auth.users on delete cascade,
+  day     date not null default (now() at time zone 'utc')::date,
+  count   int  not null default 0,
+  primary key (user_id, day)
+);
+
+alter table public.ai_usage enable row level security;
+
+drop policy if exists "read own ai usage" on public.ai_usage;
+create policy "read own ai usage" on public.ai_usage
+  for select using (auth.uid() = user_id);
+
+-- Counts one request for the caller. Returns the new count, or -1 when the
+-- daily cap is already reached (and does not count it).
+create or replace function public.use_ai_request(cap int)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  today date := (now() at time zone 'utc')::date;
+  current_count int;
+begin
+  if uid is null then
+    raise exception 'not signed in';
+  end if;
+  insert into public.ai_usage (user_id, day, count)
+    values (uid, today, 0)
+    on conflict (user_id, day) do nothing;
+  select count into current_count from public.ai_usage
+    where user_id = uid and day = today for update;
+  if current_count >= cap then
+    return -1;
+  end if;
+  update public.ai_usage set count = count + 1
+    where user_id = uid and day = today;
+  return current_count + 1;
+end $$;
+
+revoke all on function public.use_ai_request(int) from public;
+grant execute on function public.use_ai_request(int) to authenticated;

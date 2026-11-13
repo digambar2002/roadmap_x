@@ -22,6 +22,14 @@ class TodayTasksData {
 
   int get actionableCount => overdue.length + dueToday.length + thisWeek.length;
 
+  /// Undated tasks that belong to no goal yet.
+  List<TodayTaskContext> get inbox =>
+      noDueDate.where((c) => c.goal == null).toList();
+
+  /// Undated tasks from goals.
+  List<TodayTaskContext> get upNext =>
+      noDueDate.where((c) => c.goal != null).toList();
+
   List<TodayTaskContext> get allOrdered => [
         ...overdue,
         ...dueToday,

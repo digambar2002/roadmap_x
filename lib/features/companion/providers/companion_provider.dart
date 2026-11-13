@@ -37,7 +37,8 @@ class GameState {
   int get xpToday =>
       today.habitsDone * XpRules.habit +
       today.tasksDone * XpRules.task +
-      (isPerfectToday ? XpRules.perfectDay : 0);
+      (isPerfectToday ? XpRules.perfectDay : 0) +
+      snapshot.focusMinutesToday * XpRules.focusMinute;
 }
 
 final gameStateProvider = FutureProvider<GameState>((ref) async {

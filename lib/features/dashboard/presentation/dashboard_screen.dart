@@ -31,6 +31,10 @@ import 'widgets/daily_habits_section.dart';
 import 'widgets/today_tasks_section.dart';
 import '../../../shared/widgets/item_actions.dart';
 import '../../ai_goal/presentation/paste_plan_sheet.dart';
+import '../../tasks/presentation/quick_add_task_sheet.dart';
+import '../../ritual/presentation/ritual_today.dart';
+import '../../ritual/presentation/ritual_sheets.dart';
+import '../../goals/presentation/widgets/goal_pace_widgets.dart';
 
 /// The Today tab: the home of the app, and only about today.
 ///
@@ -71,6 +75,11 @@ class DashboardScreen extends ConsumerWidget {
     final header = DashboardHeader(
       greeting: '${AppDateUtils.greeting()}, $userName',
       date: AppDateUtils.formatDateWithDay(now),
+      trailing: IconButton.filledTonal(
+        tooltip: 'Focus timer',
+        onPressed: () => context.push('/focus-timer'),
+        icon: const Icon(Icons.timer_outlined),
+      ),
     );
 
     // The companion and the perfect-day ring replace the old stat tiles:
@@ -153,6 +162,25 @@ class DashboardScreen extends ConsumerWidget {
             ],
           );
 
+    // The home-screen widget's "+" links here with ?capture=1.
+    final query = GoRouterState.of(context).uri.queryParameters;
+    final capture = query['capture'];
+    final ritual = query['ritual'];
+    if (ritual == 'plan' || ritual == 'wrap') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/today');
+        ritual == 'plan' ? showPlanDaySheet(context) : showWrapUpSheet(context);
+      });
+    }
+    if (capture == '1') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!context.mounted) return;
+        context.go('/today');
+        showQuickAddTask(context);
+      });
+    }
+
     return Scaffold(
       backgroundColor: cs.surface,
       floatingActionButton: FloatingActionButton(
@@ -181,8 +209,11 @@ class DashboardScreen extends ConsumerWidget {
               children: [
                 header,
                 SizedBox(height: gap * 0.7),
+                const RitualBanner(),
                 stats,
                 SizedBox(height: gap),
+                const TopThreeSection(),
+                const StaleGoalNudge(),
                 content,
               ],
             ),
@@ -199,6 +230,10 @@ class DashboardScreen extends ConsumerWidget {
     );
     if (choice == null || !context.mounted) return;
     switch (choice) {
+      case _QuickAdd.task:
+        await showQuickAddTask(context);
+      case _QuickAdd.focus:
+        context.push('/focus-timer');
       case _QuickAdd.goal:
         await _createGoal(context, ref);
       case _QuickAdd.aiGoal:
@@ -266,7 +301,7 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-enum _QuickAdd { goal, aiGoal, fromText, tasksForToday, habit, routine }
+enum _QuickAdd { task, focus, goal, aiGoal, fromText, tasksForToday, habit, routine }
 
 /// Everything that can be created, in one list, from one button.
 class _QuickAddSheet extends StatelessWidget {
@@ -298,8 +333,12 @@ class _QuickAddSheet extends StatelessWidget {
                 style: tt.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
             ),
+            item(_QuickAdd.task, Icons.add_task_rounded, 'Task',
+                'Just a title. Sort it later'),
+            item(_QuickAdd.focus, Icons.timer_outlined, 'Focus session',
+                'A timer with your pet. Earns XP'),
             item(_QuickAdd.tasksForToday, Icons.playlist_add_check_rounded,
-                'Tasks for today', 'Pick from your goals or add a quick task'),
+                'Tasks from goals', 'Pick goal tasks to do today'),
             item(_QuickAdd.habit, Icons.check_circle_outline_rounded, 'Habit',
                 'Something to do every day'),
             item(_QuickAdd.goal, Icons.flag_outlined, 'Goal',

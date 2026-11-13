@@ -17,6 +17,7 @@ import '../../features/premium/presentation/premium_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/me/presentation/me_screen.dart';
 import '../../features/pet/presentation/pet_screen.dart';
+import '../../features/focus/presentation/focus_timer_screen.dart';
 
 final appRouterProvider = Provider<GoRouter>((ref) {
   final prefs = ref.watch(sharedPreferencesProvider);
@@ -38,9 +39,13 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       if (uri.scheme == 'roadmapx') {
         // Home-screen widget deep links: roadmapx://roadmapx/<screen>.
         if (uri.path.contains('settings')) return '/settings';
+        if (uri.path.contains('add')) return '/today?capture=1';
         return '/today';
       }
-      if (uri.host == 'today' || uri.path.contains('today')) {
+      // Normalise other "today" links, but leave /today itself (and its
+      // query, e.g. ?capture=1) alone.
+      if (uri.path != '/today' &&
+          (uri.host == 'today' || uri.path.contains('today'))) {
         return '/today';
       }
       if (state.matchedLocation == '/' || uri.path == '/' || uri.path.isEmpty) {
@@ -145,6 +150,12 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/premium',
         builder: (context, state) => const PremiumScreen(),
+      ),
+      GoRoute(
+        path: '/focus-timer',
+        builder: (context, state) => FocusTimerScreen(
+          taskId: int.tryParse(state.uri.queryParameters['task'] ?? ''),
+        ),
       ),
       GoRoute(
         path: '/focus/:goalId',

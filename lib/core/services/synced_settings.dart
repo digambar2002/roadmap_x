@@ -27,6 +27,10 @@ class SyncedSettings {
     'user_name',
     // The virtual pet, its inventory and coins spent (one JSON blob).
     'pet_state_v1',
+    // Daily top-3 plans and evening wrap-up notes.
+    'day_journal_v1',
+    // Finished focus sessions (they earn XP).
+    'focus_sessions_v1',
   };
 
   final _controller = StreamController<void>.broadcast();

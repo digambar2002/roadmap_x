@@ -17,7 +17,8 @@ class AiCoachService {
     required this.apiKey,
     required this.model,
     http.Client? httpClient,
-  }) : _api = GeminiRestClient(apiKey: apiKey, client: httpClient);
+    GeminiRestClient? api,
+  }) : _api = api ?? GeminiRestClient(apiKey: apiKey, client: httpClient);
 
   Future<DailyBriefing> generateDailyBriefing({
     required String context,

@@ -6,15 +6,18 @@ import '../../../../core/utils/date_utils.dart';
 import '../../../../shared/widgets/bottom_sheet_handle.dart';
 import '../../../../shared/widgets/custom_button.dart';
 import '../../../tasks/data/task_repository.dart';
+import '../../../tasks/domain/repeat_rule.dart';
+import '../../../tasks/presentation/repeat_selector.dart';
 
 class CreateEditTaskSheet extends HookConsumerWidget {
-  final int milestoneId;
+  /// Null for a task in the Inbox (no goal yet).
+  final int? milestoneId;
   final Color goalColor;
   final Task? task;
 
   const CreateEditTaskSheet({
     super.key,
-    required this.milestoneId,
+    this.milestoneId,
     required this.goalColor,
     this.task,
   });
@@ -29,6 +32,7 @@ class CreateEditTaskSheet extends HookConsumerWidget {
     final noteCtrl = useTextEditingController(text: task?.note ?? '');
     final priority = useState(task?.priority ?? 0);
     final dueDate = useState<DateTime?>(task?.dueDate);
+    final repeat = useState<RepeatRule?>(parseRepeatRule(task?.repeat));
     final isSaving = useState(false);
     final formKey = useMemoized(GlobalKey<FormState>.new);
 
@@ -41,6 +45,7 @@ class CreateEditTaskSheet extends HookConsumerWidget {
             ..text = textCtrl.text.trim()
             ..priority = priority.value
             ..dueDate = dueDate.value
+            ..repeat = repeat.value?.name
             ..note = noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim();
           if (markDone && !task!.isCompleted) {
             task!.isCompleted = true;
@@ -53,6 +58,7 @@ class CreateEditTaskSheet extends HookConsumerWidget {
             text: textCtrl.text.trim(),
             priority: priority.value,
             dueDate: dueDate.value,
+            repeat: repeat.value?.name,
             note: noteCtrl.text.trim().isEmpty ? null : noteCtrl.text.trim(),
           );
         }
@@ -123,6 +129,24 @@ class CreateEditTaskSheet extends HookConsumerWidget {
                   date: dueDate.value,
                   onPicked: (d) => dueDate.value = d,
                   onClear: () => dueDate.value = null,
+                ),
+                const SizedBox(height: 16),
+
+                // Repeat
+                Text('Repeat',
+                    style:
+                        tt.labelLarge?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 8),
+                RepeatSelector(
+                  value: repeat.value,
+                  onChanged: (r) {
+                    repeat.value = r;
+                    // A repeating task needs a starting date.
+                    if (r != null && dueDate.value == null) {
+                      final now = DateTime.now();
+                      dueDate.value = DateTime(now.year, now.month, now.day);
+                    }
+                  },
                 ),
                 const SizedBox(height: 16),
 

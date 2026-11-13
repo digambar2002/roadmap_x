@@ -27,6 +27,10 @@ import 'features/tasks/data/task_repository.dart';
 import 'features/settings/providers/settings_provider.dart';
 import 'shared/widgets/restore_backup_gate.dart';
 import 'core/services/sound_service.dart';
+import 'package:flutter/services.dart';
+import 'features/tasks/presentation/quick_add_task_sheet.dart';
+import 'features/ritual/data/ritual_settings.dart';
+import 'features/focus/data/focus_sessions.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -124,6 +128,8 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       Future<void>.microtask(() async {
         await _syncNotifications();
         await LocalChanges.instance.notify();
+        await _checkSharedText();
+        await _settleFocus();
       });
     }
   }
@@ -166,6 +172,33 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
     if (launchPayload != null) _openRouteForPayload(launchPayload);
     _notificationTapSub = NotificationService.instance.onNotificationTapped
         .listen(_openRouteForPayload);
+    await _checkSharedText();
+    await _settleFocus();
+  }
+
+  /// A focus session that ended while the app was closed still counts.
+  Future<void> _settleFocus() async {
+    final credited = await FocusSessions.instance.settleRunning();
+    if (credited != null && mounted) bumpActivityTick(ref);
+  }
+
+  static const _shareChannel = MethodChannel('roadmapx/share');
+
+  /// Text shared into the app from elsewhere ("Share → RoadmapX").
+  Future<void> _checkSharedText() async {
+    String? text;
+    try {
+      text = await _shareChannel.invokeMethod<String>('takeSharedText');
+    } catch (_) {
+      return; // Not Android, or no channel in this build.
+    }
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    final router = ref.read(appRouterProvider);
+    router.go('/today');
+    await Future<void>.delayed(const Duration(milliseconds: 350));
+    final ctx = router.routerDelegate.navigatorKey.currentContext;
+    if (ctx == null || !ctx.mounted) return;
+    await showQuickAddTask(ctx, initialText: text.trim());
   }
 
   void _openRouteForPayload(String payload) {
@@ -191,6 +224,7 @@ class _RoadmapXAppState extends ConsumerState<RoadmapXApp>
       reminderHour: prefs.getInt('daily_reminder_hour') ?? 9,
       reminderMinute: prefs.getInt('daily_reminder_minute') ?? 0,
     );
+    await RitualSettings.sync(prefs);
     await GamificationService.instance.syncNudge();
   }
 

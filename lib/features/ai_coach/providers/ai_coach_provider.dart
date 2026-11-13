@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../core/ai/ai_access.dart';
 import '../../../core/ai/ai_coach_service.dart';
 import '../../../core/services/shared_preferences_provider.dart';
 import '../../settings/providers/ai_settings_provider.dart';
@@ -15,19 +16,20 @@ final coachCacheRepositoryProvider = Provider<CoachCacheRepository>((ref) {
   return CoachCacheRepository(prefs);
 });
 
-/// Watches notifier state so UI updates immediately after saving API key.
+/// True when AI can be used: the user's own key, or Premium through the
+/// app's server. Rebuilds as soon as either changes.
 final hasAiCoachProvider = Provider<bool>((ref) {
-  final settings = ref.watch(aiSettingsNotifierProvider);
-  final key = settings.apiKey;
-  return key != null && key.isNotEmpty;
+  return ref.watch(aiAccessProvider) != AiAccess.none;
 });
 
 final aiCoachServiceProvider = Provider<AiCoachService?>((ref) {
-  if (!ref.watch(hasAiCoachProvider)) return null;
-  final settings = ref.watch(aiSettingsNotifierProvider);
-  final apiKey = settings.apiKey;
-  if (apiKey == null || apiKey.isEmpty) return null;
-  return AiCoachService(apiKey: apiKey, model: settings.model);
+  final api = ref.watch(geminiRestClientProvider);
+  if (api == null) return null;
+  return AiCoachService(
+    apiKey: api.apiKey,
+    model: ref.watch(aiSettingsNotifierProvider).model,
+    api: api,
+  );
 });
 
 class DailyBriefingNotifier extends AsyncNotifier<DailyBriefing?> {
