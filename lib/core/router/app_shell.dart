@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../shared/widgets/walkthrough.dart';
 import '../layout/breakpoints.dart';
 
 class AppShell extends ConsumerStatefulWidget {
@@ -36,10 +37,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       return Scaffold(
         body: Row(
           children: [
-            _SideNav(
-              currentIndex: index,
-              onTap: _onTabTap,
-              extended: context.isExpanded,
+            WalkTarget(
+              id: 'shell.nav',
+              child: _SideNav(
+                currentIndex: index,
+                onTap: _onTabTap,
+                extended: context.isExpanded,
+              ),
             ),
             Expanded(child: widget.navigationShell),
           ],
@@ -49,7 +53,10 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     return Scaffold(
       body: widget.navigationShell,
-      bottomNavigationBar: _BottomNav(currentIndex: index, onTap: _onTabTap),
+      bottomNavigationBar: WalkTarget(
+        id: 'shell.nav',
+        child: _BottomNav(currentIndex: index, onTap: _onTabTap),
+      ),
     );
   }
 }

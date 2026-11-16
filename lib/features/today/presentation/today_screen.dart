@@ -411,7 +411,7 @@ class _TodayTaskTile extends ConsumerWidget {
                         padding: EdgeInsets.only(left: 4, right: 2),
                         child: Icon(Icons.repeat_rounded, size: 15),
                       ),
-                    DueDateBadge(contextData: taskCtx),
+                  DueDateBadge(contextData: taskCtx),
                 ],
               ),
             ),

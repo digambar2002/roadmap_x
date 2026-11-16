@@ -1239,7 +1239,8 @@ class _RitualRemindersTileState extends ConsumerState<_RitualRemindersTile> {
               dense: true,
               title: const Text('Morning time'),
               trailing: Text(_fmt(context, morningAt),
-                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      color: cs.primary, fontWeight: FontWeight.w600)),
               onTap: () async {
                 final m = await _pick(morningAt);
                 if (m == null) return;
@@ -1263,7 +1264,8 @@ class _RitualRemindersTileState extends ConsumerState<_RitualRemindersTile> {
               dense: true,
               title: const Text('Evening time'),
               trailing: Text(_fmt(context, eveningAt),
-                  style: TextStyle(color: cs.primary, fontWeight: FontWeight.w600)),
+                  style: TextStyle(
+                      color: cs.primary, fontWeight: FontWeight.w600)),
               onTap: () async {
                 final m = await _pick(eveningAt);
                 if (m == null) return;

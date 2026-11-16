@@ -14,6 +14,9 @@ import '../../habits/providers/habit_provider.dart';
 import '../../premium/providers/premium_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 import '../../companion/providers/companion_provider.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
+import '../../../core/services/shared_preferences_provider.dart';
 import '../../../shared/widgets/text_input_dialog.dart';
 
 /// The "Me" tab: one place for who you are and everything about the app.
@@ -33,89 +36,111 @@ class MeScreen extends ConsumerWidget {
     final signedIn =
         ref.watch(accountProvider).valueOrNull?.isSignedIn ?? false;
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: AdaptivePage(
-        child: SafeArea(
-          child: ListView(
-            padding: EdgeInsets.fromLTRB(
-              context.pageGutter,
-              20,
-              context.pageGutter,
-              40,
-            ),
-            children: [
-              Text(
-                'Me',
-                style: tt.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
+    return WalkthroughTrigger(
+      flow: Tours.me,
+      steps: Tours.meSteps,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        body: AdaptivePage(
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.fromLTRB(
+                context.pageGutter,
+                20,
+                context.pageGutter,
+                40,
               ),
-              const SizedBox(height: 16),
-              const _ProfileCard(),
-              const SizedBox(height: 12),
-              const _PlanCard(),
-              const SizedBox(height: 24),
-              const _GroupLabel('Plan & progress'),
-              _Group(
-                children: [
-                  _Row(
-                    icon: Icons.insights_rounded,
-                    title: 'Insights',
-                    subtitle: 'Streaks, completion and goal progress',
-                    onTap: () => context.push('/analytics'),
-                  ),
-                  _Row(
-                    icon: Icons.calendar_month_rounded,
-                    title: 'Schedule & routines',
-                    subtitle: 'Your weekly time blocks',
-                    onTap: () => context.push('/schedule'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 24),
-              const _GroupLabel('App'),
-              _Group(
-                children: [
-                  _Row(
-                    icon: Icons.settings_outlined,
-                    title: 'Settings',
-                    subtitle: 'Notifications, appearance, AI coach, backup',
-                    onTap: () => context.push('/settings'),
-                  ),
-                  if (isAdmin)
-                    _Row(
-                      icon: Icons.admin_panel_settings_outlined,
-                      title: 'Manage subscriptions',
-                      subtitle: 'Activate or revoke accounts',
-                      onTap: () => context.push('/admin'),
-                    ),
-                  _Row(
-                    icon: Icons.help_outline_rounded,
-                    title: 'Help & feedback',
-                    subtitle: 'Email the developer',
-                    onTap: () => _emailSupport(context),
-                  ),
-                ],
-              ),
-              if (signedIn) ...[
-                const SizedBox(height: 24),
-                _Group(
-                  children: [
-                    _Row(
-                      icon: Icons.logout_rounded,
-                      title: 'Sign out',
-                      subtitle: 'Your data stays on this device',
-                      destructive: true,
-                      showChevron: false,
-                      onTap: () => _signOut(context),
-                    ),
-                  ],
+              children: [
+                Text(
+                  'Me',
+                  style:
+                      tt.headlineMedium?.copyWith(fontWeight: FontWeight.w700),
                 ),
+                const SizedBox(height: 16),
+                const WalkTarget(id: 'me.profile', child: _ProfileCard()),
+                const SizedBox(height: 12),
+                const WalkTarget(id: 'me.plan', child: _PlanCard()),
+                const SizedBox(height: 24),
+                const _GroupLabel('Plan & progress'),
+                WalkTarget(
+                  id: 'me.tools',
+                  child: _Group(
+                    children: [
+                      _Row(
+                        icon: Icons.insights_rounded,
+                        title: 'Insights',
+                        subtitle: 'Streaks, completion and goal progress',
+                        onTap: () => context.push('/analytics'),
+                      ),
+                      _Row(
+                        icon: Icons.calendar_month_rounded,
+                        title: 'Schedule & routines',
+                        subtitle: 'Your weekly time blocks',
+                        onTap: () => context.push('/schedule'),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const _GroupLabel('App'),
+                WalkTarget(
+                  id: 'me.app',
+                  child: _Group(
+                    children: [
+                      _Row(
+                        icon: Icons.settings_outlined,
+                        title: 'Settings',
+                        subtitle: 'Notifications, appearance, AI coach, backup',
+                        onTap: () => context.push('/settings'),
+                      ),
+                      if (isAdmin)
+                        _Row(
+                          icon: Icons.admin_panel_settings_outlined,
+                          title: 'Manage subscriptions',
+                          subtitle: 'Activate or revoke accounts',
+                          onTap: () => context.push('/admin'),
+                        ),
+                      _Row(
+                        icon: Icons.help_outline_rounded,
+                        title: 'Help & feedback',
+                        subtitle: 'Email the developer',
+                        onTap: () => _emailSupport(context),
+                      ),
+                      _Row(
+                        icon: Icons.tour_outlined,
+                        title: 'Replay app tour',
+                        subtitle: 'See the tips for every screen again',
+                        onTap: () => _replayTour(context, ref),
+                      ),
+                    ],
+                  ),
+                ),
+                if (signedIn) ...[
+                  const SizedBox(height: 24),
+                  _Group(
+                    children: [
+                      _Row(
+                        icon: Icons.logout_rounded,
+                        title: 'Sign out',
+                        subtitle: 'Your data stays on this device',
+                        destructive: true,
+                        showChevron: false,
+                        onTap: () => _signOut(context),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
+  }
+
+  Future<void> _replayTour(BuildContext context, WidgetRef ref) async {
+    await Walkthrough.resetAll(ref.read(sharedPreferencesProvider));
+    if (context.mounted) context.go('/today');
   }
 
   Future<void> _emailSupport(BuildContext context) async {

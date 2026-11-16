@@ -13,6 +13,8 @@ import 'widgets/habit_calendar_row.dart';
 import 'widgets/habit_edit_sheet.dart';
 import 'widgets/habit_month_calendar.dart';
 import 'widgets/habit_row.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import '../../../shared/widgets/item_actions.dart';
 
 /// A modern, full-featured Habit Tracker screen.
@@ -71,135 +73,151 @@ class _HabitsScreenState extends ConsumerState<HabitsScreen> {
     final checked = checkedAsync.valueOrNull ?? const <String>{};
     final completedDays = completedDaysAsync.valueOrNull ?? const <String>{};
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Habit Tracker',
-              style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
-            ),
-            if (streak > 0)
+    return WalkthroughTrigger(
+      flow: Tours.habits,
+      steps: Tours.habitsSteps,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Text(
-                '🔥 $streak day streak',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFFF59E0B),
-                ),
+                'Habit Tracker',
+                style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
               ),
+              if (streak > 0)
+                Text(
+                  '🔥 $streak day streak',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFF59E0B),
+                  ),
+                ),
+            ],
+          ),
+          backgroundColor: cs.surface,
+          elevation: 0,
+          actions: [
+            IconButton(
+              tooltip: 'Add habit',
+              icon: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.14),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.add_rounded, color: cs.primary, size: 20),
+              ),
+              onPressed: () => HabitEditSheet.show(context),
+            ),
+            const SizedBox(width: 8),
           ],
         ),
-        backgroundColor: cs.surface,
-        elevation: 0,
-        actions: [
-          IconButton(
-            tooltip: 'Add habit',
-            icon: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: cs.primary.withValues(alpha: 0.14),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.add_rounded, color: cs.primary, size: 20),
-            ),
-            onPressed: () => HabitEditSheet.show(context),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: AdaptivePage(
-        child: habitsAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (error, _) => Center(child: Text('Error: $error')),
-          data: (habits) {
-            if (habits.isEmpty) {
-              return Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: EmptyState(
-                    emoji: '🎯',
-                    title: 'No habits yet',
-                    subtitle: 'Build consistent routines with custom colors, '
-                        'repeat schedules, and daily reminders.',
-                    buttonLabel: 'Add your first habit',
-                    onButton: () => HabitEditSheet.show(context),
+        body: AdaptivePage(
+          child: habitsAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => Center(child: Text('Error: $error')),
+            data: (habits) {
+              if (habits.isEmpty) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: EmptyState(
+                      emoji: '🎯',
+                      title: 'No habits yet',
+                      subtitle: 'Build consistent routines with custom colors, '
+                          'repeat schedules, and daily reminders.',
+                      buttonLabel: 'Add your first habit',
+                      onButton: () => HabitEditSheet.show(context),
+                    ),
                   ),
-                ),
-              );
-            }
+                );
+              }
 
-            return RefreshIndicator(
-              onRefresh: () async {
-                ref.read(habitActivityTickProvider.notifier).state++;
-                ref.read(activityTickProvider.notifier).state++;
-              },
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
-                children: [
-                  // ── Calendar Week Row (day views only) ─────────────
-                  if (_filter != 'Analytics') ...[
-                    HabitCalendarRow(
-                      selectedDate: _selectedDate,
-                      onDateSelected: (date) {
-                        setState(() => _selectedDate = date);
-                      },
-                      completedDates: completedDays,
+              return RefreshIndicator(
+                onRefresh: () async {
+                  ref.read(habitActivityTickProvider.notifier).state++;
+                  ref.read(activityTickProvider.notifier).state++;
+                },
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 80),
+                  children: [
+                    // ── Calendar Week Row (day views only) ─────────────
+                    if (_filter != 'Analytics') ...[
+                      WalkTarget(
+                        id: 'habits.week',
+                        child: HabitCalendarRow(
+                          selectedDate: _selectedDate,
+                          onDateSelected: (date) {
+                            setState(() => _selectedDate = date);
+                          },
+                          completedDates: completedDays,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
+
+                    // ── Filter Tabs ───────────────────────────────────
+                    // Equal-width segments, so all four always fit on a phone.
+                    WalkTarget(
+                      id: 'habits.tabs',
+                      child: Row(
+                        children: [
+                          for (final (i, label) in const [
+                            'All',
+                            'To Do',
+                            'Completed',
+                            'Analytics',
+                          ].indexed) ...[
+                            if (i > 0) const SizedBox(width: 6),
+                            Expanded(
+                              child: _FilterTab(
+                                label: label,
+                                isSelected: _filter == label,
+                                onTap: () => setState(() => _filter = label),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 16),
-                  ],
 
-                  // ── Filter Tabs ───────────────────────────────────
-                  // Equal-width segments, so all four always fit on a phone.
-                  Row(
-                    children: [
-                      for (final (i, label) in const [
-                        'All',
-                        'To Do',
-                        'Completed',
-                        'Analytics',
-                      ].indexed) ...[
-                        if (i > 0) const SizedBox(width: 6),
-                        Expanded(
-                          child: _FilterTab(
-                            label: label,
-                            isSelected: _filter == label,
-                            onTap: () => setState(() => _filter = label),
-                          ),
+                    // ── Analytics or categorized habits ────────────────
+                    if (_filter == 'Analytics')
+                      _HabitAnalyticsList(habits: habits)
+                    else
+                      WalkTarget(
+                        id: 'habits.list',
+                        child: _CategorizedHabitsList(
+                          habits: habits,
+                          checked: checked,
+                          filter: _filter,
+                          selectedDate: _normalizedSelectedDate,
+                          onToggle: (uid) => _toggleHabit(uid, checked),
+                          onEdit: (habit) =>
+                              HabitEditSheet.show(context, habit: habit),
+                          onAddInCategory: (cat) => HabitEditSheet.show(context,
+                              initialCategory: cat),
                         ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-
-                  // ── Analytics or categorized habits ────────────────
-                  if (_filter == 'Analytics')
-                    _HabitAnalyticsList(habits: habits)
-                  else
-                    _CategorizedHabitsList(
-                      habits: habits,
-                      checked: checked,
-                      filter: _filter,
-                      selectedDate: _normalizedSelectedDate,
-                      onToggle: (uid) => _toggleHabit(uid, checked),
-                      onEdit: (habit) =>
-                          HabitEditSheet.show(context, habit: habit),
-                      onAddInCategory: (cat) =>
-                          HabitEditSheet.show(context, initialCategory: cat),
-                    ),
-                ],
-              ),
-            );
-          },
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        heroTag: 'habits_screen_fab',
-        onPressed: () => HabitEditSheet.show(context),
-        icon: const Icon(Icons.add_rounded),
-        label: const Text('New Habit'),
+        floatingActionButton: WalkTarget(
+          id: 'habits.fab',
+          child: FloatingActionButton.extended(
+            heroTag: 'habits_screen_fab',
+            onPressed: () => HabitEditSheet.show(context),
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('New Habit'),
+          ),
+        ),
       ),
     );
   }

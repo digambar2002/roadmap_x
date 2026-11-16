@@ -40,8 +40,7 @@ class HabitIcons {
     'star': Icons.star_border_rounded,
   };
 
-  static IconData resolve(String? key) =>
-      catalog[key] ?? catalog[fallbackKey]!;
+  static IconData resolve(String? key) => catalog[key] ?? catalog[fallbackKey]!;
 
   static List<String> get keys => catalog.keys.toList();
 }

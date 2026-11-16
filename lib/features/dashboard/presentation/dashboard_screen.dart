@@ -34,6 +34,8 @@ import '../../ai_goal/presentation/paste_plan_sheet.dart';
 import '../../tasks/presentation/quick_add_task_sheet.dart';
 import '../../ritual/presentation/ritual_today.dart';
 import '../../ritual/presentation/ritual_sheets.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import '../../goals/presentation/widgets/goal_pace_widgets.dart';
 
 /// The Today tab: the home of the app, and only about today.
@@ -75,18 +77,27 @@ class DashboardScreen extends ConsumerWidget {
     final header = DashboardHeader(
       greeting: '${AppDateUtils.greeting()}, $userName',
       date: AppDateUtils.formatDateWithDay(now),
-      trailing: IconButton.filledTonal(
-        tooltip: 'Focus timer',
-        onPressed: () => context.push('/focus-timer'),
-        icon: const Icon(Icons.timer_outlined),
+      trailing: WalkTarget(
+        id: 'today.focus',
+        child: IconButton.filledTonal(
+          tooltip: 'Focus timer',
+          onPressed: () => context.push('/focus-timer'),
+          icon: const Icon(Icons.timer_outlined),
+        ),
       ),
     );
 
     // The companion and the perfect-day ring replace the old stat tiles:
     // one glance says how today is going and what is at stake.
-    final stats = CompanionCard(streak: streakAsync.valueOrNull ?? 0);
+    final stats = WalkTarget(
+      id: 'today.companion',
+      child: CompanionCard(streak: streakAsync.valueOrNull ?? 0),
+    );
 
-    final todaysTasks = TodayTasksSection(groupedAsync: todayGroupedAsync);
+    final todaysTasks = WalkTarget(
+      id: 'today.tasks',
+      child: TodayTasksSection(groupedAsync: todayGroupedAsync),
+    );
 
     // The schedule only takes space on days that have one; setting it up is
     // offered from the "+" button and the Me tab instead of an empty card.
@@ -110,10 +121,13 @@ class DashboardScreen extends ConsumerWidget {
             ),
           );
 
-    final dailyHabits = DailyHabitsSection(
-      habits: habits,
-      checked: checkedAsync.valueOrNull ?? const <String>{},
-      streak: streakAsync.valueOrNull ?? 0,
+    final dailyHabits = WalkTarget(
+      id: 'today.habits',
+      child: DailyHabitsSection(
+        habits: habits,
+        checked: checkedAsync.valueOrNull ?? const <String>{},
+        streak: streakAsync.valueOrNull ?? 0,
+      ),
     );
 
     // The AI briefing is only shown to people who have set up the coach; for
@@ -181,41 +195,48 @@ class DashboardScreen extends ConsumerWidget {
       });
     }
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      floatingActionButton: FloatingActionButton(
-        heroTag: 'today_add_fab',
-        tooltip: 'Add',
-        onPressed: () => _showQuickAdd(context, ref),
-        child: const Icon(Icons.add_rounded),
-      ),
-      body: AdaptivePage.wide(
-        child: SafeArea(
-          child: RefreshIndicator(
-            onRefresh: () async {
-              ref.invalidate(dashboardDataProvider);
-              // Pull-to-refresh reuses today's cached briefing. Forcing a new
-              // one on every pull spent the small free Gemini quota; the
-              // briefing card has its own refresh button for that.
-              if (hasAi) {
-                await ref.read(dailyBriefingProvider.notifier).load();
-              }
-              ref.invalidate(todayTasksGroupedProvider);
-              ref.invalidate(todayHabitChecksProvider);
-              bumpActivityTick(ref);
-            },
-            child: ListView(
-              padding: EdgeInsets.fromLTRB(gutter, 20, gutter, 96),
-              children: [
-                header,
-                SizedBox(height: gap * 0.7),
-                const RitualBanner(),
-                stats,
-                SizedBox(height: gap),
-                const TopThreeSection(),
-                const StaleGoalNudge(),
-                content,
-              ],
+    return WalkthroughTrigger(
+      flow: Tours.today,
+      steps: Tours.todaySteps,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        floatingActionButton: WalkTarget(
+          id: 'today.fab',
+          child: FloatingActionButton(
+            heroTag: 'today_add_fab',
+            tooltip: 'Add',
+            onPressed: () => _showQuickAdd(context, ref),
+            child: const Icon(Icons.add_rounded),
+          ),
+        ),
+        body: AdaptivePage.wide(
+          child: SafeArea(
+            child: RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(dashboardDataProvider);
+                // Pull-to-refresh reuses today's cached briefing. Forcing a new
+                // one on every pull spent the small free Gemini quota; the
+                // briefing card has its own refresh button for that.
+                if (hasAi) {
+                  await ref.read(dailyBriefingProvider.notifier).load();
+                }
+                ref.invalidate(todayTasksGroupedProvider);
+                ref.invalidate(todayHabitChecksProvider);
+                bumpActivityTick(ref);
+              },
+              child: ListView(
+                padding: EdgeInsets.fromLTRB(gutter, 20, gutter, 96),
+                children: [
+                  header,
+                  SizedBox(height: gap * 0.7),
+                  const RitualBanner(),
+                  stats,
+                  SizedBox(height: gap),
+                  const TopThreeSection(),
+                  const StaleGoalNudge(),
+                  content,
+                ],
+              ),
             ),
           ),
         ),
@@ -301,7 +322,16 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-enum _QuickAdd { task, focus, goal, aiGoal, fromText, tasksForToday, habit, routine }
+enum _QuickAdd {
+  task,
+  focus,
+  goal,
+  aiGoal,
+  fromText,
+  tasksForToday,
+  habit,
+  routine
+}
 
 /// Everything that can be created, in one list, from one button.
 class _QuickAddSheet extends StatelessWidget {

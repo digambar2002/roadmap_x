@@ -11,6 +11,8 @@ import '../domain/pet_domain.dart';
 import '../providers/pet_provider.dart';
 import 'pet_avatar.dart';
 import '../../../core/services/sound_service.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import '../../../shared/widgets/text_input_dialog.dart';
 
 Sfx soundFor(StoreItem item) => switch (item.category) {
@@ -101,35 +103,39 @@ class _PetScreenState extends ConsumerState<PetScreen> {
 
     if (pet?.urgentNeed != null && !_whimperedThisSession) {
       _whimperedThisSession = true;
-      WidgetsBinding.instance.addPostFrameCallback(
-          (_) => SoundService.instance.play(Sfx.whimper));
+      WidgetsBinding.instance
+          .addPostFrameCallback((_) => SoundService.instance.play(Sfx.whimper));
     }
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: AdaptivePage(
-        child: SafeArea(
-          child: stored.when(
-            skipLoadingOnReload: true,
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('Error: $e')),
-            data: (_) => pet == null
-                ? const AdoptView()
-                : _PetRoom(
-                    pet: pet,
-                    action: _action,
-                    nonce: _nonce,
-                    actionEmoji: _actionEmoji,
-                    onPat: _pat,
-                    onUse: _use,
-                    onRename: () => _rename(pet),
-                    onStore: () => StoreSheet.show(context),
-                    onChangePet: () => showAdaptiveSheet<void>(
-                      context: context,
-                      isScrollControlled: true,
-                      builder: (_) => const AdoptView(switching: true),
+    return WalkthroughTrigger(
+      flow: Tours.pet,
+      steps: Tours.petSteps,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        body: AdaptivePage(
+          child: SafeArea(
+            child: stored.when(
+              skipLoadingOnReload: true,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('Error: $e')),
+              data: (_) => pet == null
+                  ? const AdoptView()
+                  : _PetRoom(
+                      pet: pet,
+                      action: _action,
+                      nonce: _nonce,
+                      actionEmoji: _actionEmoji,
+                      onPat: _pat,
+                      onUse: _use,
+                      onRename: () => _rename(pet),
+                      onStore: () => StoreSheet.show(context),
+                      onChangePet: () => showAdaptiveSheet<void>(
+                        context: context,
+                        isScrollControlled: true,
+                        builder: (_) => const AdoptView(switching: true),
+                      ),
                     ),
-                  ),
+            ),
           ),
         ),
       ),
@@ -195,7 +201,7 @@ class _PetRoom extends ConsumerWidget {
                 ],
               ),
             ),
-            _CoinPill(coins: coins),
+            WalkTarget(id: 'pet.coins', child: _CoinPill(coins: coins)),
             ItemActionsButton(
               title: pet.name,
               size: 22,
@@ -217,72 +223,83 @@ class _PetRoom extends ConsumerWidget {
         const SizedBox(height: 12),
 
         // ── Room ─────────────────────────────────────────
-        Container(
-          height: 300,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topCenter,
-              end: Alignment.bottomCenter,
-              colors: [
-                info.belly.withValues(alpha: 0.35),
-                cs.primary.withValues(alpha: 0.10),
+        WalkTarget(
+          id: 'pet.room',
+          child: Container(
+            height: 300,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  info.belly.withValues(alpha: 0.35),
+                  cs.primary.withValues(alpha: 0.10),
+                ],
+              ),
+              border: Border.all(color: cs.outline),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // Floor line.
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  height: 70,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: cs.primary.withValues(alpha: 0.06),
+                      borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(24)),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  bottom: 18,
+                  child: PetAvatar(
+                    species: pet.species,
+                    mood: pet.mood,
+                    action: action,
+                    actionNonce: nonce,
+                    actionEmoji: actionEmoji,
+                    size: 230,
+                    onTap: onPat,
+                  ),
+                ),
+                if (urgent != null)
+                  Positioned(
+                    top: 14,
+                    child: _SpeechBubble(
+                      text: 'I\'m ${urgent.complaint}! ${urgent.emoji}',
+                    ),
+                  )
+                else
+                  Positioned(
+                    top: 14,
+                    child: Text(
+                      'Tap ${pet.name} to say hi',
+                      style:
+                          tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                  ),
               ],
             ),
-            border: Border.all(color: cs.outline),
-          ),
-          child: Stack(
-            alignment: Alignment.center,
-            children: [
-              // Floor line.
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                height: 70,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: cs.primary.withValues(alpha: 0.06),
-                    borderRadius: const BorderRadius.vertical(
-                        bottom: Radius.circular(24)),
-                  ),
-                ),
-              ),
-              Positioned(
-                bottom: 18,
-                child: PetAvatar(
-                  species: pet.species,
-                  mood: pet.mood,
-                  action: action,
-                  actionNonce: nonce,
-                  actionEmoji: actionEmoji,
-                  size: 230,
-                  onTap: onPat,
-                ),
-              ),
-              if (urgent != null)
-                Positioned(
-                  top: 14,
-                  child: _SpeechBubble(
-                    text: 'I\'m ${urgent.complaint}! ${urgent.emoji}',
-                  ),
-                )
-              else
-                Positioned(
-                  top: 14,
-                  child: Text(
-                    'Tap ${pet.name} to say hi',
-                    style: tt.labelSmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                ),
-            ],
           ),
         ),
         const SizedBox(height: 16),
 
         // ── Needs ────────────────────────────────────────
-        for (final need in PetNeed.values)
-          _NeedBar(need: need, value: pet.need(need)),
+        WalkTarget(
+          id: 'pet.needs',
+          child: Column(
+            children: [
+              for (final need in PetNeed.values)
+                _NeedBar(need: need, value: pet.need(need)),
+            ],
+          ),
+        ),
         const SizedBox(height: 16),
 
         // ── Inventory ────────────────────────────────────
@@ -293,10 +310,13 @@ class _PetRoom extends ConsumerWidget {
               style: tt.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const Spacer(),
-            FilledButton.icon(
-              onPressed: onStore,
-              icon: const Text('🛒'),
-              label: const Text('Store'),
+            WalkTarget(
+              id: 'pet.store',
+              child: FilledButton.icon(
+                onPressed: onStore,
+                icon: const Text('🛒'),
+                label: const Text('Store'),
+              ),
             ),
           ],
         ),

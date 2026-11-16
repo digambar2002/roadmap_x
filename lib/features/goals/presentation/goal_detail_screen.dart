@@ -31,6 +31,8 @@ import '../../premium/providers/premium_provider.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../../core/services/sound_service.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import 'widgets/goal_pace_widgets.dart';
 
 class GoalDetailScreen extends ConsumerStatefulWidget {
@@ -114,165 +116,179 @@ class _GoalDetailBody extends ConsumerWidget {
     final hasAiCoach =
         ref.watch(hasAiCoachProvider) && ref.watch(isPremiumProvider);
 
-    return Scaffold(
-      backgroundColor: cs.background,
-      body: AdaptivePage(
-          child: Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              // ── AppBar ──────────────────────────────────────
-              SliverAppBar(
-                expandedHeight: 200,
-                pinned: true,
-                backgroundColor: cs.background,
-                leading: IconButton(
-                  icon: const Icon(Icons.arrow_back_ios_new),
-                  onPressed: () => context.pop(),
-                ),
-                actions: [
-                  IconButton(
-                    icon: const Icon(Icons.center_focus_strong_outlined),
-                    tooltip: 'Focus Mode',
-                    onPressed: () => context.push('/focus/${goal.id}'),
+    return WalkthroughTrigger(
+      flow: Tours.goalDetail,
+      steps: Tours.goalDetailSteps,
+      child: Scaffold(
+        backgroundColor: cs.background,
+        body: AdaptivePage(
+            child: Stack(
+          children: [
+            CustomScrollView(
+              slivers: [
+                // ── AppBar ──────────────────────────────────────
+                SliverAppBar(
+                  expandedHeight: 200,
+                  pinned: true,
+                  backgroundColor: cs.background,
+                  leading: IconButton(
+                    icon: const Icon(Icons.arrow_back_ios_new),
+                    onPressed: () => context.pop(),
                   ),
-                  if (hasAiCoach) ...[
+                  actions: [
                     IconButton(
-                      icon: const Icon(Icons.chat_bubble_outline_rounded),
-                      tooltip: 'Coach Chat',
-                      onPressed: () => showCoachChatSheet(context, goal.id),
+                      icon: const Icon(Icons.center_focus_strong_outlined),
+                      tooltip: 'Focus Mode',
+                      onPressed: () => context.push('/focus/${goal.id}'),
                     ),
+                    if (hasAiCoach) ...[
+                      IconButton(
+                        icon: const Icon(Icons.chat_bubble_outline_rounded),
+                        tooltip: 'Coach Chat',
+                        onPressed: () => showCoachChatSheet(context, goal.id),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.auto_fix_high_outlined),
+                        tooltip: 'Adjust Plan',
+                        onPressed: () => showAdjustPlanSheet(context, goal.id),
+                      ),
+                    ],
                     IconButton(
-                      icon: const Icon(Icons.auto_fix_high_outlined),
-                      tooltip: 'Adjust Plan',
-                      onPressed: () => showAdjustPlanSheet(context, goal.id),
+                      icon: const Icon(Icons.edit_outlined),
+                      onPressed: () => showAdaptiveSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (_) => CreateEditGoalSheet(goal: goal),
+                      ),
+                    ),
+                    ItemActionsButton(
+                      title: goal.name,
+                      size: 24,
+                      actions: () => [
+                        ItemAction(
+                          label: 'Edit',
+                          icon: Icons.edit_outlined,
+                          onSelected: () => showAdaptiveSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => CreateEditGoalSheet(goal: goal),
+                          ),
+                        ),
+                        ItemAction(
+                          label: 'Add milestone',
+                          icon: Icons.add_road_rounded,
+                          onSelected: () => _addMilestone(context),
+                        ),
+                        ItemAction(
+                          label: goal.isArchived ? 'Unarchive' : 'Archive',
+                          icon: goal.isArchived
+                              ? Icons.unarchive_outlined
+                              : Icons.archive_outlined,
+                          onSelected: () =>
+                              _handleMenu(context, ref, 'archive'),
+                        ),
+                        ItemAction(
+                          label: 'Delete',
+                          icon: Icons.delete_outline,
+                          destructive: true,
+                          onSelected: () => _handleMenu(context, ref, 'delete'),
+                        ),
+                      ],
                     ),
                   ],
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: () => showAdaptiveSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (_) => CreateEditGoalSheet(goal: goal),
+                  flexibleSpace: FlexibleSpaceBar(
+                    background: WalkTarget(
+                      id: 'goal.header',
+                      child: _GoalHeroHeader(
+                        goal: goal,
+                        goalColor: goalColor,
+                      ),
                     ),
                   ),
-                  ItemActionsButton(
-                    title: goal.name,
-                    size: 24,
-                    actions: () => [
-                      ItemAction(
-                        label: 'Edit',
-                        icon: Icons.edit_outlined,
-                        onSelected: () => showAdaptiveSheet(
-                          context: context,
-                          isScrollControlled: true,
-                          backgroundColor: Colors.transparent,
-                          builder: (_) => CreateEditGoalSheet(goal: goal),
-                        ),
-                      ),
-                      ItemAction(
-                        label: 'Add milestone',
-                        icon: Icons.add_road_rounded,
-                        onSelected: () => _addMilestone(context),
-                      ),
-                      ItemAction(
-                        label: goal.isArchived ? 'Unarchive' : 'Archive',
-                        icon: goal.isArchived
-                            ? Icons.unarchive_outlined
-                            : Icons.archive_outlined,
-                        onSelected: () => _handleMenu(context, ref, 'archive'),
-                      ),
-                      ItemAction(
-                        label: 'Delete',
-                        icon: Icons.delete_outline,
-                        destructive: true,
-                        onSelected: () => _handleMenu(context, ref, 'delete'),
-                      ),
-                    ],
-                  ),
-                ],
-                flexibleSpace: FlexibleSpaceBar(
-                  background: _GoalHeroHeader(
-                    goal: goal,
-                    goalColor: goalColor,
+                ),
+
+                SliverToBoxAdapter(
+                  child: WalkTarget(
+                    id: 'goal.pace',
+                    child: GoalPaceCard(
+                      goalId: goal.id,
+                      targetDate: goal.targetDate,
+                    ),
                   ),
                 ),
-              ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: PremiumLock(
+                      title: 'AI coach',
+                      message: 'Guidance on this goal — part of Premium.',
+                      child: GoalCoachSection(goalId: goal.id),
+                    ),
+                  ),
+                ),
 
-              SliverToBoxAdapter(
-                child: GoalPaceCard(
+                // ── Milestones ───────────────────────────────────
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Milestones',
+                            style: tt.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                        WalkTarget(
+                          id: 'goal.addMilestone',
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.add, size: 18),
+                            label: const Text('Add'),
+                            onPressed: () => _addMilestone(context),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                _MilestonesList(
                   goalId: goal.id,
-                  targetDate: goal.targetDate,
+                  goalColor: goalColor,
+                  onMilestoneComplete: () {
+                    SoundService.instance.play(Sfx.fanfare);
+                    confettiController.play();
+                  },
                 ),
-              ),
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: PremiumLock(
-                    title: 'AI coach',
-                    message: 'Guidance on this goal — part of Premium.',
-                    child: GoalCoachSection(goalId: goal.id),
-                  ),
-                ),
-              ),
 
-              // ── Milestones ───────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Milestones',
-                          style: tt.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      TextButton.icon(
-                        icon: const Icon(Icons.add, size: 18),
-                        label: const Text('Add'),
-                        onPressed: () => _addMilestone(context),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              _MilestonesList(
-                goalId: goal.id,
-                goalColor: goalColor,
-                onMilestoneComplete: () {
-                  SoundService.instance.play(Sfx.fanfare);
-                  confettiController.play();
-                },
-              ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 100)),
-            ],
-          ),
-
-          // ── Confetti ─────────────────────────────────────────
-          Align(
-            alignment: Alignment.topCenter,
-            child: ConfettiWidget(
-              confettiController: confettiController,
-              blastDirectionality: BlastDirectionality.explosive,
-              shouldLoop: false,
-              numberOfParticles: 30,
-              gravity: 0.3,
-              colors: const [
-                Color(0xFF5B9CF6),
-                Color(0xFF34D399),
-                Color(0xFFFBBF24),
-                Color(0xFFF472B6),
-                Color(0xFFA78BFA),
+                const SliverToBoxAdapter(child: SizedBox(height: 100)),
               ],
             ),
-          ),
-        ],
-      )),
+
+            // ── Confetti ─────────────────────────────────────────
+            Align(
+              alignment: Alignment.topCenter,
+              child: ConfettiWidget(
+                confettiController: confettiController,
+                blastDirectionality: BlastDirectionality.explosive,
+                shouldLoop: false,
+                numberOfParticles: 30,
+                gravity: 0.3,
+                colors: const [
+                  Color(0xFF5B9CF6),
+                  Color(0xFF34D399),
+                  Color(0xFFFBBF24),
+                  Color(0xFFF472B6),
+                  Color(0xFFA78BFA),
+                ],
+              ),
+            ),
+          ],
+        )),
+      ),
     );
   }
 
@@ -516,19 +532,22 @@ class _MilestonesListState extends ConsumerState<_MilestonesList> {
             },
             itemBuilder: (context, i) {
               final ms = milestones[i];
+              final card = _MilestoneCard(
+                index: i,
+                goalId: widget.goalId,
+                milestone: ms,
+                goalColor: widget.goalColor,
+                onComplete: widget.onMilestoneComplete,
+                isExpanded: _expanded[ms.id] ?? false,
+                onToggle: () => setState(
+                  () => _expanded[ms.id] = !(_expanded[ms.id] ?? false),
+                ),
+              );
               return KeyedSubtree(
                 key: ValueKey(ms.id),
-                child: _MilestoneCard(
-                  index: i,
-                  goalId: widget.goalId,
-                  milestone: ms,
-                  goalColor: widget.goalColor,
-                  onComplete: widget.onMilestoneComplete,
-                  isExpanded: _expanded[ms.id] ?? false,
-                  onToggle: () => setState(
-                    () => _expanded[ms.id] = !(_expanded[ms.id] ?? false),
-                  ),
-                ),
+                child: i == 0
+                    ? WalkTarget(id: 'goal.milestone', child: card)
+                    : card,
               );
             },
           ),

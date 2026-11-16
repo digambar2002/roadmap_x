@@ -152,8 +152,28 @@ class AccountService {
     if (_user != null) await refreshEntitlement();
   }
 
-  Future<void> signUp(String email, String password) =>
-      _guard(() => client.auth.signUp(email: email.trim(), password: password));
+  /// Creates an account. Returns true when the user is signed in straight
+  /// away, false when Supabase wants the email confirmed first (the user is
+  /// told to check their inbox), and null on failure ([AccountState.error]).
+  Future<bool?> signUp(String email, String password) async {
+    AuthResponse? response;
+    final ok = await _guard(() async {
+      response =
+          await client.auth.signUp(email: email.trim(), password: password);
+    });
+    if (!ok) return null;
+    return response?.session != null;
+  }
+
+  /// Emails a password-reset link. Returns false on failure.
+  Future<bool> sendPasswordReset(String email) => _guard(
+        () => client.auth.resetPasswordForEmail(
+          email.trim(),
+          redirectTo: SyncConfig.oauthRedirectUri,
+        ),
+      );
+
+  void clearError() => _emit(_state.copyWith(clearError: true));
 
   Future<void> signIn(String email, String password) => _guard(
         () => client.auth.signInWithPassword(
@@ -184,16 +204,25 @@ class AccountService {
   /// everything it has and carries on working offline.
   Future<void> signOut() => _guard(() => client.auth.signOut());
 
-  Future<void> _guard(Future<void> Function() action) async {
-    if (!_initialized) return;
+  /// Runs an auth call, tracking busy state. Returns whether it succeeded;
+  /// on failure [AccountState.error] holds a message fit to show the user.
+  Future<bool> _guard(Future<void> Function() action) async {
+    if (!_initialized) return false;
     _emit(_state.copyWith(isBusy: true, clearError: true));
     try {
       await action();
       _emit(_state.copyWith(isBusy: false));
+      return true;
     } on AuthException catch (error) {
-      _emit(_state.copyWith(isBusy: false, error: error.message));
+      _emit(_state.copyWith(
+          isBusy: false, error: friendlyAuthError(error.message)));
+      return false;
     } catch (error) {
-      _emit(_state.copyWith(isBusy: false, error: error.toString()));
+      _emit(_state.copyWith(
+        isBusy: false,
+        error: friendlyAuthError(error.toString()),
+      ));
+      return false;
     }
   }
 
@@ -242,4 +271,35 @@ class AccountService {
     await _authSub?.cancel();
     await _controller.close();
   }
+}
+
+/// Supabase's auth messages, in words a user understands.
+String friendlyAuthError(String raw) {
+  final m = raw.toLowerCase();
+  if (m.contains('invalid login credentials') ||
+      m.contains('invalid_credentials')) {
+    return 'Wrong email or password.';
+  }
+  if (m.contains('already registered') || m.contains('already exists')) {
+    return 'An account with this email already exists. Sign in instead.';
+  }
+  if (m.contains('email not confirmed')) {
+    return 'Confirm your email first: check your inbox for the link.';
+  }
+  if (m.contains('password should be') || m.contains('weak password')) {
+    return 'Choose a stronger password (at least 6 characters).';
+  }
+  if (m.contains('unable to validate email') || m.contains('invalid email')) {
+    return 'That email address doesn\'t look right.';
+  }
+  if (m.contains('rate limit') || m.contains('too many') || m.contains('429')) {
+    return 'Too many attempts. Wait a minute and try again.';
+  }
+  if (m.contains('socket') ||
+      m.contains('network') ||
+      m.contains('failed host lookup')) {
+    return 'No internet connection.';
+  }
+  if (m.contains('google sign-in page')) return raw;
+  return 'Something went wrong. Please try again.';
 }

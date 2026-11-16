@@ -989,7 +989,8 @@ class NotificationService {
     await _schedule(
       id: _companionNudgeId,
       title: '$name is getting $complaint',
-      body: 'Finish a task to earn coins, then look after $name in the Pet tab.',
+      body:
+          'Finish a task to earn coins, then look after $name in the Pet tab.',
       when: tz.TZDateTime.from(at, tz.local),
       details: const NotificationDetails(
         android: AndroidNotificationDetails(

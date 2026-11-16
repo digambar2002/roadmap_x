@@ -22,6 +22,8 @@ import 'widgets/goal_template_sheet.dart';
 import '../../../core/layout/adaptive_page.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 import '../../ai_goal/presentation/paste_plan_sheet.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import 'widgets/goal_pace_widgets.dart';
 
 class GoalsScreen extends ConsumerWidget {
@@ -34,86 +36,99 @@ class GoalsScreen extends ConsumerWidget {
     final filter = ref.watch(goalFilterProvider);
     final goalsAsync = ref.watch(filteredGoalsProvider);
 
-    return Scaffold(
-      backgroundColor: cs.background,
-      body: AdaptivePage(
-          child: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ───────────────────────────────────────
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: goalsAsync.when(
-                      data: (goals) => Text(
-                        'My Goals (${goals.length})',
-                        style: tt.headlineMedium
-                            ?.copyWith(fontWeight: FontWeight.w700),
-                      ),
-                      loading: () => Text('My Goals',
+    return WalkthroughTrigger(
+      flow: Tours.goals,
+      steps: Tours.goalsSteps,
+      child: Scaffold(
+        backgroundColor: cs.background,
+        body: AdaptivePage(
+            child: SafeArea(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // ── Header ───────────────────────────────────────
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: goalsAsync.when(
+                        data: (goals) => Text(
+                          'My Goals (${goals.length})',
                           style: tt.headlineMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
-                      error: (_, __) => const Text('My Goals'),
+                              ?.copyWith(fontWeight: FontWeight.w700),
+                        ),
+                        loading: () => Text('My Goals',
+                            style: tt.headlineMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        error: (_, __) => const Text('My Goals'),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.1),
+                  ],
+                ),
+              ).animate().fadeIn(duration: 300.ms).slideY(begin: -0.1),
 
-            // ── Filter chips ─────────────────────────────────
-            _FilterChips(
-              current: filter,
-              onChanged: (f) => ref.read(goalFilterProvider.notifier).state = f,
-            ).animate().fadeIn(delay: 100.ms),
+              // ── Filter chips ─────────────────────────────────
+              WalkTarget(
+                id: 'goals.filters',
+                child: _FilterChips(
+                  current: filter,
+                  onChanged: (f) =>
+                      ref.read(goalFilterProvider.notifier).state = f,
+                ),
+              ).animate().fadeIn(delay: 100.ms),
 
-            // ── Goals list ───────────────────────────────────
-            Expanded(
-              child: goalsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('Error: $e')),
-                data: (goals) => goals.isEmpty
-                    ? EmptyState(
-                        emoji: '🎯',
-                        title: 'No goals yet',
-                        subtitle: 'Start by creating your first goal.',
-                        buttonLabel: '+ Create Goal',
-                        onButton: () => _openCreate(context, ref),
-                      )
-                    : _GoalsList(goals: goals),
+              // ── Goals list ───────────────────────────────────
+              Expanded(
+                child: goalsAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (e, _) => Center(child: Text('Error: $e')),
+                  data: (goals) => goals.isEmpty
+                      ? EmptyState(
+                          emoji: '🎯',
+                          title: 'No goals yet',
+                          subtitle: 'Start by creating your first goal.',
+                          buttonLabel: '+ Create Goal',
+                          onButton: () => _openCreate(context, ref),
+                        )
+                      : _GoalsList(goals: goals),
+                ),
               ),
-            ),
-          ],
-        ),
-      )),
-      floatingActionButton: Container(
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
+            ],
           ),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF5B9CF6).withOpacity(0.35),
-              blurRadius: 16,
-              offset: const Offset(0, 8),
+        )),
+        floatingActionButton: WalkTarget(
+          id: 'goals.fab',
+          child: Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF5B9CF6).withOpacity(0.35),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
-          ],
-        ),
-        child: FloatingActionButton.extended(
-          heroTag: 'goals_fab',
-          elevation: 0,
-          backgroundColor: Colors.transparent,
-          onPressed: () => _showOptions(context, ref),
-          icon: const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
-          label: const Text(
-            'New Goal',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-              fontSize: 14,
+            child: FloatingActionButton.extended(
+              heroTag: 'goals_fab',
+              elevation: 0,
+              backgroundColor: Colors.transparent,
+              onPressed: () => _showOptions(context, ref),
+              icon:
+                  const Icon(Icons.auto_awesome, color: Colors.white, size: 20),
+              label: const Text(
+                'New Goal',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                ),
+              ),
             ),
           ),
         ),
@@ -180,8 +195,8 @@ class GoalsScreen extends ConsumerWidget {
             ),
             Divider(color: cs.outline),
             ListTile(
-              leading: Icon(Icons.content_paste_rounded,
-                  color: cs.onSurfaceVariant),
+              leading:
+                  Icon(Icons.content_paste_rounded, color: cs.onSurfaceVariant),
               title: const Text('Create from text'),
               subtitle: const Text('Paste a plan, list or notes'),
               onTap: () async {
@@ -339,10 +354,12 @@ class _GoalsList extends ConsumerWidget {
         final goal = goals[i];
         return KeyedSubtree(
           key: ValueKey(goal.id),
-          child: _GoalCard(
-            goal: goal,
-            index: i,
-          ),
+          child: i == 0
+              ? WalkTarget(
+                  id: 'goals.card',
+                  child: _GoalCard(goal: goal, index: i),
+                )
+              : _GoalCard(goal: goal, index: i),
         );
       },
     );

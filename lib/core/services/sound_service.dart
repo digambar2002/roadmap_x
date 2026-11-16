@@ -83,6 +83,7 @@ class SoundService {
     if (!_enabled || !_ready) return;
     final pool = _pools[sfx];
     if (pool == null) return;
-    unawaited(pool.start(volume: volume).then((_) {}).catchError((Object _) {}));
+    unawaited(
+        pool.start(volume: volume).then((_) {}).catchError((Object _) {}));
   }
 }

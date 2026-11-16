@@ -19,6 +19,8 @@ import '../../pet/presentation/pet_avatar.dart';
 import '../../pet/providers/pet_provider.dart';
 import '../../tasks/data/task_repository.dart';
 import '../../tasks/providers/task_provider.dart';
+import '../../../shared/widgets/walkthrough.dart';
+import '../../walkthrough/tours.dart';
 import '../data/focus_sessions.dart';
 
 enum _Phase { setup, running, paused, done }
@@ -283,217 +285,234 @@ class _FocusTimerScreenState extends ConsumerState<FocusTimerScreen>
                 (_remaining.inMilliseconds / total.inMilliseconds)
                     .clamp(0.0, 1.0);
 
-    return Scaffold(
-      backgroundColor: cs.surface,
-      body: AdaptivePage(
-        child: SafeArea(
-          child: Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              ListView(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
-                children: [
-                  const PageTitle('Focus'),
-                  const SizedBox(height: 4),
-                  Text(
-                    _todayMinutes > 0
-                        ? '$_todayMinutes min focused today · '
-                            '+${XpRules.focusMinute} XP per minute'
-                        : 'Every focused minute earns XP and coins.',
-                    style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
-                  ),
-                  const SizedBox(height: 20),
-                  // ── Timer ring ─────────────────────────────
-                  Center(
-                    child: SizedBox(
-                      width: 250,
-                      height: 250,
-                      child: Stack(
-                        alignment: Alignment.center,
-                        children: [
-                          SizedBox.expand(
-                            child: CircularProgressIndicator(
-                              value: progress,
-                              strokeWidth: 12,
-                              strokeCap: StrokeCap.round,
-                              backgroundColor:
-                                  cs.outline.withValues(alpha: 0.3),
-                              valueColor: AlwaysStoppedAnimation(
-                                _phase == _Phase.done
-                                    ? const Color(0xFF10B981)
-                                    : cs.primary,
-                              ),
-                            ),
-                          ),
-                          Column(
-                            mainAxisSize: MainAxisSize.min,
+    return WalkthroughTrigger(
+      flow: Tours.focus,
+      steps: Tours.focusSteps,
+      child: Scaffold(
+        backgroundColor: cs.surface,
+        body: AdaptivePage(
+          child: SafeArea(
+            child: Stack(
+              alignment: Alignment.topCenter,
+              children: [
+                ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    const PageTitle('Focus'),
+                    const SizedBox(height: 4),
+                    Text(
+                      _todayMinutes > 0
+                          ? '$_todayMinutes min focused today · '
+                              '+${XpRules.focusMinute} XP per minute'
+                          : 'Every focused minute earns XP and coins.',
+                      style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
+                    ),
+                    const SizedBox(height: 20),
+                    // ── Timer ring ─────────────────────────────
+                    Center(
+                      child: WalkTarget(
+                        id: 'focus.ring',
+                        child: SizedBox(
+                          width: 250,
+                          height: 250,
+                          child: Stack(
+                            alignment: Alignment.center,
                             children: [
-                              Text(
-                                _phase == _Phase.done ? 'Done!' : _fmt(shown),
-                                style: tt.displayMedium?.copyWith(
-                                  fontWeight: FontWeight.w700,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures()
-                                  ],
+                              SizedBox.expand(
+                                child: CircularProgressIndicator(
+                                  value: progress,
+                                  strokeWidth: 12,
+                                  strokeCap: StrokeCap.round,
+                                  backgroundColor:
+                                      cs.outline.withValues(alpha: 0.3),
+                                  valueColor: AlwaysStoppedAnimation(
+                                    _phase == _Phase.done
+                                        ? const Color(0xFF10B981)
+                                        : cs.primary,
+                                  ),
                                 ),
                               ),
-                              Text(
-                                switch (_phase) {
-                                  _Phase.setup => '$_minutes minutes',
-                                  _Phase.running => 'Stay with it',
-                                  _Phase.paused => 'Paused',
-                                  _Phase.done =>
-                                    '+${_minutes * XpRules.focusMinute} XP '
-                                        '· +${_minutes * XpRules.focusMinute ~/ xpPerCoin} coins',
-                                },
-                                style: tt.bodySmall
-                                    ?.copyWith(color: cs.onSurfaceVariant),
+                              Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    _phase == _Phase.done
+                                        ? 'Done!'
+                                        : _fmt(shown),
+                                    style: tt.displayMedium?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      fontFeatures: const [
+                                        FontFeature.tabularFigures()
+                                      ],
+                                    ),
+                                  ),
+                                  Text(
+                                    switch (_phase) {
+                                      _Phase.setup => '$_minutes minutes',
+                                      _Phase.running => 'Stay with it',
+                                      _Phase.paused => 'Paused',
+                                      _Phase.done =>
+                                        '+${_minutes * XpRules.focusMinute} XP '
+                                            '· +${_minutes * XpRules.focusMinute ~/ xpPerCoin} coins',
+                                    },
+                                    style: tt.bodySmall
+                                        ?.copyWith(color: cs.onSurfaceVariant),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  // ── Pet company ────────────────────────────
-                  if (pet != null)
-                    Column(
-                      children: [
-                        Stack(
-                          clipBehavior: Clip.none,
-                          children: [
-                            PetAvatar(
-                              species: pet.species,
-                              mood: _phase == _Phase.paused
-                                  ? PetMood.content
-                                  : PetMood.happy,
-                              size: 130,
-                              action: _phase == _Phase.done
-                                  ? PetAction.love
-                                  : PetAction.none,
-                              actionNonce: _petNonce,
-                            ),
-                            if (_phase == _Phase.running)
-                              const Positioned(
-                                right: -6,
-                                bottom: 18,
-                                child:
-                                    Text('💻', style: TextStyle(fontSize: 30)),
-                              ),
-                          ],
-                        ),
-                        Text(
-                          switch (_phase) {
-                            _Phase.setup => '${pet.name} will focus with you.',
-                            _Phase.running =>
-                              '${pet.name} is focusing with you.',
-                            _Phase.paused => '${pet.name} is waiting.',
-                            _Phase.done => '${pet.name} is proud of you!',
-                          },
-                          style: tt.bodySmall
-                              ?.copyWith(color: cs.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  const SizedBox(height: 20),
-                  // ── Task ───────────────────────────────────
-                  if (_phase == _Phase.setup)
-                    OutlinedButton.icon(
-                      onPressed: _pickTask,
-                      icon: const Icon(Icons.task_alt_rounded, size: 18),
-                      label: Text(
-                          _task == null
-                              ? 'Pick a task (optional)'
-                              : _task!.text,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
-                    )
-                  else if (_task != null)
-                    Center(
-                      child: Text('Focusing on: ${_task!.text}',
-                          textAlign: TextAlign.center,
-                          style: tt.bodyMedium
-                              ?.copyWith(fontWeight: FontWeight.w600)),
-                    ),
-                  const SizedBox(height: 16),
-                  // ── Controls ───────────────────────────────
-                  if (_phase == _Phase.setup) ...[
-                    Wrap(
-                      alignment: WrapAlignment.center,
-                      spacing: 8,
-                      children: [
-                        for (final m in _durations)
-                          ChoiceChip(
-                            label: Text('$m min'),
-                            selected: _minutes == m,
-                            onSelected: (_) => setState(() {
-                              _minutes = m;
-                              _remaining = Duration(minutes: m);
-                            }),
-                          ),
-                      ],
                     ),
                     const SizedBox(height: 16),
-                    FilledButton.icon(
-                      onPressed: _begin,
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Start focus'),
-                      style: FilledButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                    // ── Pet company ────────────────────────────
+                    if (pet != null)
+                      Column(
+                        children: [
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              PetAvatar(
+                                species: pet.species,
+                                mood: _phase == _Phase.paused
+                                    ? PetMood.content
+                                    : PetMood.happy,
+                                size: 130,
+                                action: _phase == _Phase.done
+                                    ? PetAction.love
+                                    : PetAction.none,
+                                actionNonce: _petNonce,
+                              ),
+                              if (_phase == _Phase.running)
+                                const Positioned(
+                                  right: -6,
+                                  bottom: 18,
+                                  child: Text('💻',
+                                      style: TextStyle(fontSize: 30)),
+                                ),
+                            ],
+                          ),
+                          Text(
+                            switch (_phase) {
+                              _Phase.setup =>
+                                '${pet.name} will focus with you.',
+                              _Phase.running =>
+                                '${pet.name} is focusing with you.',
+                              _Phase.paused => '${pet.name} is waiting.',
+                              _Phase.done => '${pet.name} is proud of you!',
+                            },
+                            style: tt.bodySmall
+                                ?.copyWith(color: cs.onSurfaceVariant),
+                          ),
+                        ],
                       ),
-                    ),
-                  ] else if (_phase == _Phase.done) ...[
-                    if (_task != null && !_task!.isCompleted)
-                      FilledButton.icon(
-                        onPressed: _completeTask,
-                        icon: const Icon(Icons.check_rounded),
-                        label: const Text('Mark the task done'),
+                    const SizedBox(height: 20),
+                    // ── Task ───────────────────────────────────
+                    if (_phase == _Phase.setup)
+                      WalkTarget(
+                        id: 'focus.task',
+                        child: OutlinedButton.icon(
+                          onPressed: _pickTask,
+                          icon: const Icon(Icons.task_alt_rounded, size: 18),
+                          label: Text(
+                              _task == null
+                                  ? 'Pick a task (optional)'
+                                  : _task!.text,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis),
+                        ),
+                      )
+                    else if (_task != null)
+                      Center(
+                        child: Text('Focusing on: ${_task!.text}',
+                            textAlign: TextAlign.center,
+                            style: tt.bodyMedium
+                                ?.copyWith(fontWeight: FontWeight.w600)),
                       ),
-                    const SizedBox(height: 8),
-                    OutlinedButton(
-                      onPressed: () => setState(() {
-                        _phase = _Phase.setup;
-                        _remaining = Duration(minutes: _minutes);
-                      }),
-                      child: const Text('Another round'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      child: const Text('Done'),
-                    ),
-                  ] else
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: _giveUp,
-                            child: const Text('End'),
+                    const SizedBox(height: 16),
+                    // ── Controls ───────────────────────────────
+                    if (_phase == _Phase.setup) ...[
+                      Wrap(
+                        alignment: WrapAlignment.center,
+                        spacing: 8,
+                        children: [
+                          for (final m in _durations)
+                            ChoiceChip(
+                              label: Text('$m min'),
+                              selected: _minutes == m,
+                              onSelected: (_) => setState(() {
+                                _minutes = m;
+                                _remaining = Duration(minutes: m);
+                              }),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      WalkTarget(
+                        id: 'focus.start',
+                        child: FilledButton.icon(
+                          onPressed: _begin,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Start focus'),
+                          style: FilledButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
                         ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            onPressed:
-                                _phase == _Phase.running ? _pause : _resume,
-                            icon: Icon(_phase == _Phase.running
-                                ? Icons.pause_rounded
-                                : Icons.play_arrow_rounded),
-                            label: Text(
-                                _phase == _Phase.running ? 'Pause' : 'Resume'),
-                          ),
+                      ),
+                    ] else if (_phase == _Phase.done) ...[
+                      if (_task != null && !_task!.isCompleted)
+                        FilledButton.icon(
+                          onPressed: _completeTask,
+                          icon: const Icon(Icons.check_rounded),
+                          label: const Text('Mark the task done'),
                         ),
-                      ],
-                    ),
-                ],
-              ),
-              ConfettiWidget(
-                confettiController: _confetti,
-                blastDirectionality: BlastDirectionality.explosive,
-                numberOfParticles: 30,
-                shouldLoop: false,
-              ),
-            ],
+                      const SizedBox(height: 8),
+                      OutlinedButton(
+                        onPressed: () => setState(() {
+                          _phase = _Phase.setup;
+                          _remaining = Duration(minutes: _minutes);
+                        }),
+                        child: const Text('Another round'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).maybePop(),
+                        child: const Text('Done'),
+                      ),
+                    ] else
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              onPressed: _giveUp,
+                              child: const Text('End'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              onPressed:
+                                  _phase == _Phase.running ? _pause : _resume,
+                              icon: Icon(_phase == _Phase.running
+                                  ? Icons.pause_rounded
+                                  : Icons.play_arrow_rounded),
+                              label: Text(_phase == _Phase.running
+                                  ? 'Pause'
+                                  : 'Resume'),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                ConfettiWidget(
+                  confettiController: _confetti,
+                  blastDirectionality: BlastDirectionality.explosive,
+                  numberOfParticles: 30,
+                  shouldLoop: false,
+                ),
+              ],
+            ),
           ),
         ),
       ),
