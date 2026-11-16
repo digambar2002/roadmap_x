@@ -125,8 +125,8 @@ class _PastePlanSheetState extends ConsumerState<PastePlanSheet> {
     if (!await PremiumGate.ensureAi(context, ref)) return;
     final service = ref.read(geminiServiceProvider);
     if (service == null) {
-      setState(() =>
-          _error = 'Add a Gemini API key in Settings → AI coach to use this.');
+      setState(() => _error =
+          'Sign in to use AI, or add your own Gemini key in Settings.');
       return;
     }
     setState(() {

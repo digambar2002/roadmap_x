@@ -6,7 +6,9 @@ import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
 import '../../../core/ai/gemini_service.dart';
-import '../../ai_coach/providers/ai_coach_provider.dart';
+import '../../../core/ai/ai_access.dart';
+import '../../../core/subscription/entitlements.dart';
+import '../../premium/providers/premium_provider.dart';
 import '../providers/ai_goal_provider.dart';
 import '../../../core/layout/adaptive_sheet.dart';
 
@@ -19,6 +21,22 @@ Future<int?> showAiGoalSheet(BuildContext context) {
   );
 }
 
+/// Starter ideas shown as chips: a short label, and the fuller sentence it
+/// fills in. Broad on purpose; most people aren't here for interview prep.
+const aiGoalSuggestions = <String, String>{
+  'Learn Spanish':
+      'I want to hold a 15-minute conversation in Spanish within 3 months, starting from zero',
+  'Run a 5K': 'I want to go from no running to finishing a 5K in 8 weeks',
+  'Get a new job':
+      'I want to land a better job in my field within 3 months: CV, portfolio, applications and interview prep',
+  'Start a side business':
+      'I want to launch a small online side business and get my first 10 customers in 3 months',
+  'Learn to code':
+      'I want to learn programming from scratch and build my first real project in 4 months',
+  'Get fit':
+      'I want to get fit and build a consistent workout habit over the next 12 weeks',
+};
+
 class AiGoalSheet extends ConsumerStatefulWidget {
   const AiGoalSheet({super.key});
 
@@ -30,19 +48,6 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
   static const _gradient = LinearGradient(
     colors: [Color(0xFF5B9CF6), Color(0xFFA78BFA)],
   );
-
-  static const _suggestions = <String, String>{
-    'Learn DSA':
-        'I want to learn Data Structures and Algorithms step by step for placement interviews in 3 months',
-    'Master Flutter':
-        'I want to master Flutter app development from basics to advanced in 2 months',
-    'Crack FAANG':
-        'I want to prepare for FAANG software engineering interviews in 6 months',
-    'Build SaaS':
-        'I want to build and launch a SaaS product from idea to first 10 customers in 3 months',
-    'Get fit':
-        'I want to get fit and build a consistent workout habit over the next 12 weeks',
-  };
 
   static const _loadingMessages = <String>[
     'Thinking about your milestones...',
@@ -61,6 +66,9 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
     super.initState();
     final state = ref.read(aiGoalGeneratorProvider);
     _promptController.text = state.prompt;
+    // Opened with a plan already being built (from onboarding): the
+    // listener in build() only sees changes, so start the ticker here.
+    if (state.status == AiGenerationStatus.loading) _startLoadingTicker();
     _promptController.addListener(() {
       ref
           .read(aiGoalGeneratorProvider.notifier)
@@ -108,8 +116,9 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
     final notifier = ref.read(aiGoalGeneratorProvider.notifier);
     // Watch the notifier state (not the repository provider, which never
     // notifies) so the sheet rebuilds when the key is saved or cleared.
-    // Own key, or Premium through the app's server.
-    final hasKey = ref.watch(hasAiCoachProvider);
+    // Own key, or a signed-in account through the app's server.
+    final hasKey = ref.watch(canUseAiPlansProvider);
+    final freeLeft = ref.watch(freeAiPlansLeftProvider).valueOrNull;
 
     return SafeArea(
       child: Padding(
@@ -125,6 +134,22 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
               onClose: () => Navigator.of(context).pop(),
               gradient: _gradient,
             ),
+            if (freeLeft != null) ...[
+              const SizedBox(height: 4),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  freeLeft == 0
+                      ? 'No free AI plans left this month. They renew on '
+                          'the 1st.'
+                      : '$freeLeft of ${Entitlements.freeAiPlansPerMonth} '
+                          'free AI plans left this month',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: freeLeft == 0 ? cs.error : cs.onSurfaceVariant,
+                      ),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Expanded(
               child: Container(
@@ -138,6 +163,12 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                   padding: const EdgeInsets.all(16),
                   child: !hasKey
                       ? _NoApiKeyView(
+                          onSignIn: !ref.watch(syncAvailableProvider)
+                              ? null
+                              : () {
+                                  Navigator.of(context).pop();
+                                  context.push('/premium');
+                                },
                           onGoToSettings: () {
                             Navigator.of(context).pop();
                             context.push('/settings');
@@ -198,7 +229,7 @@ class _AiGoalSheetState extends ConsumerState<AiGoalSheet> {
                               errorMessage: state.errorMessage,
                               technicalDetails: state.technicalDetails,
                               onPickSuggestion: (label) {
-                                final prompt = _suggestions[label]!;
+                                final prompt = aiGoalSuggestions[label]!;
                                 _promptController.text = prompt;
                                 _promptController.selection =
                                     TextSelection.collapsed(
@@ -264,8 +295,10 @@ class _Header extends StatelessWidget {
 }
 
 class _NoApiKeyView extends StatelessWidget {
-  const _NoApiKeyView({required this.onGoToSettings});
+  const _NoApiKeyView({required this.onSignIn, required this.onGoToSettings});
 
+  /// Null in a build with no accounts: only the own-key route exists.
+  final VoidCallback? onSignIn;
   final VoidCallback onGoToSettings;
 
   @override
@@ -276,23 +309,38 @@ class _NoApiKeyView extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('🔑', style: TextStyle(fontSize: 38)),
+          const Text('✨', style: TextStyle(fontSize: 38)),
           const SizedBox(height: 12),
           Text(
-            'Set up your API Key first',
+            onSignIn == null
+                ? 'Add a Gemini key to use AI'
+                : 'Let AI build your plan, free',
             style: tt.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
           Text(
-            'Add your free Gemini API key in Settings to enable AI-powered goal generation.',
+            onSignIn == null
+                ? 'AI runs on your own free Gemini API key in this build. '
+                    'Add it in Settings.'
+                : 'Sign in for free and get '
+                    '${Entitlements.freeAiPlansPerMonth} AI-built plans '
+                    'every month. No API key or payment needed.',
             style: tt.bodyMedium,
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
-          FilledButton.icon(
+          if (onSignIn != null)
+            FilledButton.icon(
+              onPressed: onSignIn,
+              icon: const Icon(Icons.login_rounded),
+              label: const Text('Sign in free'),
+            ),
+          TextButton(
             onPressed: onGoToSettings,
-            icon: const Icon(Icons.settings_outlined),
-            label: const Text('Go to Settings -> AI Configuration'),
+            child: Text(onSignIn == null
+                ? 'Open Settings'
+                : 'Use my own Gemini key instead'),
           ),
         ],
       ),
@@ -344,7 +392,7 @@ class _PromptInputView extends ConsumerWidget {
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
               hintText:
-                  'e.g. I want to learn DSA step by step for placements in 3 months',
+                  'e.g. I want to run my first 5K in 8 weeks, starting from zero',
               border: OutlineInputBorder(),
             ),
           ),
@@ -368,7 +416,7 @@ class _PromptInputView extends ConsumerWidget {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _AiGoalSheetState._suggestions.keys
+            children: aiGoalSuggestions.keys
                 .map(
                   (label) => ActionChip(
                     label: Text(label),

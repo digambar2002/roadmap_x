@@ -1,5 +1,6 @@
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../core/ai/ai_access.dart';
 import '../../../core/ai/gemini_provider.dart';
 import '../../../core/ai/gemini_service.dart';
 import '../data/goal_plan_saver.dart';
@@ -84,7 +85,8 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
       state = (
         status: AiGenerationStatus.error,
         result: null,
-        errorMessage: 'No API key set. Go to Settings -> AI Configuration.',
+        errorMessage: 'Sign in to use AI, or add your own Gemini key in '
+            'Settings.',
         technicalDetails: null,
         prompt: state.prompt,
       );
@@ -102,6 +104,8 @@ class AiGoalGenerator extends Notifier<AiGoalGeneratorState> {
 
     try {
       final result = await service.generateGoal(trimmed);
+      // A free plan was just spent; refresh "N left this month".
+      ref.invalidate(freeAiPlansLeftProvider);
       state = (
         status: AiGenerationStatus.success,
         result: result,

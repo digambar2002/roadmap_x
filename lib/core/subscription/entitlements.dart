@@ -11,6 +11,11 @@ class Entitlements {
   /// existing goals stay readable and editable, only creating new ones stops.
   static const int freeActiveGoalLimit = 3;
 
+  /// AI-built plans a free, signed-in account gets each calendar month,
+  /// through the app's server. Keep in step with AI_FREE_MONTHLY_CAP in
+  /// supabase/functions/gemini.
+  static const int freeAiPlansPerMonth = 3;
+
   /// Where users are told to write to ask for activation. Change this to
   /// whichever address you actually watch.
   static const String supportEmail = 'digambar.chaudhari@networcx.io';

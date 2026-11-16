@@ -12,8 +12,9 @@ import '../../premium/providers/premium_provider.dart';
 import '../../settings/providers/settings_provider.dart';
 
 /// First-run walkthrough: three short slides, then a name and an optional
-/// account. Finishing it marks onboarding complete, after which the app opens
-/// straight to the dashboard on every launch.
+/// account, then the first-goal page so nobody lands in an empty app.
+/// Finishing it marks onboarding complete, after which the app opens
+/// straight to Today on every launch.
 ///
 /// Signing in here, before anything local exists, is still the cleanest
 /// moment to do it: the account's data arrives with nothing to merge. But it
@@ -33,22 +34,22 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
 
   static const _slides = [
     _Slide(
-      icon: Icons.flag_rounded,
-      title: 'Goals that go somewhere',
-      body: 'Set a goal, break it into milestones, and turn each milestone '
-          'into tasks you can actually tick off.',
+      icon: Icons.auto_awesome_rounded,
+      title: 'Turn any goal into a plan',
+      body: 'Say what you want in a sentence, or paste a plan from ChatGPT. '
+          'You get milestones and tasks you can start on today.',
     ),
     _Slide(
-      icon: Icons.local_fire_department_rounded,
-      title: 'Habits and a daily rhythm',
-      body: 'Track daily habits, plan your week, and get a reminder at the '
-          'moment it helps.',
+      icon: Icons.wb_sunny_rounded,
+      title: 'Know what to do each day',
+      body: 'Today shows your tasks and habits in one place, and tells you '
+          'if you\'re on pace to finish on time.',
     ),
     _Slide(
-      icon: Icons.insights_rounded,
-      title: 'See the progress',
-      body: 'Streaks, focus views and a daily briefing keep the big picture '
-          'in sight. Everything works offline, on this device.',
+      icon: Icons.pets_rounded,
+      title: 'A pet that keeps you going',
+      body: 'Everything you finish earns XP and coins for your companion. '
+          'It all works offline, on this device.',
     ),
   ];
 
@@ -77,14 +78,18 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
     ref.invalidate(settingsProvider);
   }
 
-  Future<void> _finish({String? then}) async {
+  /// Completes onboarding and opens the first-goal page over Today.
+  /// [signInFirst] puts the sign-in page on top of that, so signing in
+  /// with email still ends at "What do you want to achieve?".
+  Future<void> _finish({bool signInFirst = false}) async {
     if (_finishing) return;
     _finishing = true;
     await _saveName();
     await Onboarding.markComplete(ref.read(sharedPreferencesProvider));
     if (!mounted) return;
     context.go('/today');
-    if (then != null) context.push(then);
+    context.push('/first-goal');
+    if (signInFirst) context.push('/premium');
   }
 
   Future<void> _continueWithGoogle() async {
@@ -141,7 +146,7 @@ class _WelcomeScreenState extends ConsumerState<WelcomeScreen> {
                       nameController: _name,
                       syncAvailable: syncAvailable,
                       onGoogle: _continueWithGoogle,
-                      onEmail: () => _finish(then: '/premium'),
+                      onEmail: () => _finish(signInFirst: true),
                       onSkipAccount: _finish,
                     ),
                   ],
@@ -323,7 +328,7 @@ class _SetupPage extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
-                    'or sync across devices',
+                    'or sign in, free',
                     style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                   ),
                 ),
@@ -350,8 +355,8 @@ class _SetupPage extends StatelessWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              'Signing in now brings an existing account\'s goals and habits '
-              'to this device. Sync is part of RoadmapX Premium.',
+              'A free account lets AI build your plans, and brings an '
+              'existing account\'s goals and habits to this device.',
               textAlign: TextAlign.center,
               style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
             ),

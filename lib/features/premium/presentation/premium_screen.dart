@@ -97,8 +97,8 @@ const _perks = <(IconData, String, String)>[
   ),
   (
     Icons.auto_awesome,
-    'AI coach and planning',
-    'Briefings, reviews and AI-built plans, no API key needed'
+    'AI coach and more AI plans',
+    'Daily briefings, weekly reviews and plan adjustments'
   ),
   (
     Icons.all_inclusive_rounded,
@@ -406,7 +406,8 @@ class _SignInViewState extends ConsumerState<_SignInView> {
                         tt.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
                 const SizedBox(height: 4),
                 Text(
-                  'Everything works offline without one. Upgrade to '
+                  'You get ${Entitlements.freeAiPlansPerMonth} AI-built plans '
+                  'a month, and everything else works offline. Upgrade to '
                   '${Entitlements.productName} any time for:',
                   style: tt.bodySmall?.copyWith(color: cs.onSurfaceVariant),
                 ),

@@ -320,3 +320,75 @@ end $$;
 
 revoke all on function public.use_ai_request(int) from public;
 grant execute on function public.use_ai_request(int) to authenticated;
+
+-- Free accounts get a small monthly allowance of AI-built plans instead of
+-- the Premium daily cap. Counts one request for the caller against the
+-- calendar month (UTC). Returns the month's new total, or -1 when the
+-- allowance is already used (and does not count it).
+create or replace function public.use_free_ai_request(cap int)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  uid uuid := auth.uid();
+  today date := (now() at time zone 'utc')::date;
+  month_start date := date_trunc('month', now() at time zone 'utc')::date;
+  month_count int;
+begin
+  if uid is null then
+    raise exception 'not signed in';
+  end if;
+  insert into public.ai_usage (user_id, day, count)
+    values (uid, today, 0)
+    on conflict (user_id, day) do nothing;
+  -- Locking today's row makes concurrent calls from one user queue up.
+  perform 1 from public.ai_usage
+    where user_id = uid and day = today for update;
+  select coalesce(sum(count), 0) into month_count from public.ai_usage
+    where user_id = uid and day >= month_start;
+  if month_count >= cap then
+    return -1;
+  end if;
+  update public.ai_usage set count = count + 1
+    where user_id = uid and day = today;
+  return month_count + 1;
+end $$;
+
+revoke all on function public.use_free_ai_request(int) from public;
+grant execute on function public.use_free_ai_request(int) to authenticated;
+
+-- How many AI requests the caller has made this calendar month (UTC), so
+-- the app can show "2 of 3 free AI plans left".
+create or replace function public.ai_requests_this_month()
+returns int
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(sum(count), 0)::int from public.ai_usage
+    where user_id = auth.uid()
+      and day >= date_trunc('month', now() at time zone 'utc')::date;
+$$;
+
+revoke all on function public.ai_requests_this_month() from public;
+grant execute on function public.ai_requests_this_month() to authenticated;
+
+-- Gives a request back when Gemini failed, so a server error doesn't cost
+-- a free user one of their plans. Only the Edge Function (service role) may
+-- call it; otherwise anyone could refund themselves forever.
+create or replace function public.refund_ai_request(target uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.ai_usage set count = greatest(count - 1, 0)
+    where user_id = target and day = (now() at time zone 'utc')::date;
+$$;
+
+revoke all on function public.refund_ai_request(uuid) from public;
+revoke all on function public.refund_ai_request(uuid) from authenticated;
+grant execute on function public.refund_ai_request(uuid) to service_role;

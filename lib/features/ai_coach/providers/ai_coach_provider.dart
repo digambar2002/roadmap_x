@@ -16,13 +16,17 @@ final coachCacheRepositoryProvider = Provider<CoachCacheRepository>((ref) {
   return CoachCacheRepository(prefs);
 });
 
-/// True when AI can be used: the user's own key, or Premium through the
-/// app's server. Rebuilds as soon as either changes.
+/// True when the coach (briefings, reviews, chat) can be used: the user's
+/// own key, or Premium through the app's server. The free allowance is for
+/// AI-built plans only, so it doesn't switch the coach on: a daily briefing
+/// would spend the whole month's allowance in three days.
 final hasAiCoachProvider = Provider<bool>((ref) {
-  return ref.watch(aiAccessProvider) != AiAccess.none;
+  final access = ref.watch(aiAccessProvider);
+  return access == AiAccess.ownKey || access == AiAccess.premium;
 });
 
 final aiCoachServiceProvider = Provider<AiCoachService?>((ref) {
+  if (!ref.watch(hasAiCoachProvider)) return null;
   final api = ref.watch(geminiRestClientProvider);
   if (api == null) return null;
   return AiCoachService(

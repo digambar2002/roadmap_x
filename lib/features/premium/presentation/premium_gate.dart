@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:hooks_riverpod/hooks_riverpod.dart';
 
+import '../../../core/ai/ai_access.dart';
 import '../../../core/subscription/entitlements.dart';
 import '../../goals/data/goal_repository.dart';
 import '../providers/premium_provider.dart';
@@ -35,23 +36,60 @@ class PremiumGate {
     return false;
   }
 
-  /// Call before opening an AI feature.
+  /// Call before asking AI to build or organise a plan.
+  ///
+  /// Anyone with their own key or Premium goes straight through. A free
+  /// signed-in account goes through while it has plans left this month.
+  /// Someone signed out is offered a free sign-in, not a paywall: the first
+  /// AI-built plan is how people find out what the app is for.
   static Future<bool> ensureAi(BuildContext context, WidgetRef ref) async {
-    if (ref.read(isPremiumProvider)) return true;
-
-    await _showUpsell(
-      context,
-      title: 'AI coach is a premium feature',
-      message: 'Daily briefings, weekly reviews and AI-built plans come with '
-          '${Entitlements.productName}.',
-    );
-    return false;
+    const perMonth = Entitlements.freeAiPlansPerMonth;
+    switch (ref.read(aiAccessProvider)) {
+      case AiAccess.ownKey:
+      case AiAccess.premium:
+        return true;
+      case AiAccess.free:
+        // Unknown (offline, old server) lets them try; the server decides.
+        final left = await ref.read(freeAiPlansLeftProvider.future);
+        if (left == null || left > 0) return true;
+        if (!context.mounted) return false;
+        await _showUpsell(
+          context,
+          title: 'This month\'s free AI plans are used',
+          message: 'You get $perMonth AI-built plans a month, and they renew '
+              'on the 1st. Until then you can paste a plan or start from a '
+              'template. ${Entitlements.productName} includes more.',
+        );
+        return false;
+      case AiAccess.none:
+        if (ref.read(syncAvailableProvider)) {
+          await _showUpsell(
+            context,
+            title: 'Let AI build your plan, free',
+            message: 'Sign in for free and get $perMonth AI-built plans every '
+                'month. No API key or payment needed.',
+            actionLabel: 'Sign in free',
+          );
+        } else {
+          await _showUpsell(
+            context,
+            title: 'Add a Gemini key to use AI',
+            message: 'This build has no accounts, so AI runs on your own '
+                'free Gemini API key. Add it in Settings → AI coach.',
+            actionLabel: 'Open Settings',
+            route: '/settings',
+          );
+        }
+        return false;
+    }
   }
 
   static Future<void> _showUpsell(
     BuildContext context, {
     required String title,
     required String message,
+    String? actionLabel,
+    String route = '/premium',
   }) async {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
@@ -83,9 +121,9 @@ class PremiumGate {
               child: FilledButton(
                 onPressed: () {
                   Navigator.pop(sheetContext);
-                  sheetContext.push('/premium');
+                  sheetContext.push(route);
                 },
-                child: Text('See ${Entitlements.productName}'),
+                child: Text(actionLabel ?? 'See ${Entitlements.productName}'),
               ),
             ),
             SizedBox(

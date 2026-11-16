@@ -145,6 +145,36 @@ $pastedText
       _logSdkError('GeminiApiException', e, st);
       final details = _redact(e.fullText);
       final failure = classifyGeminiError(e);
+      // The app's own server limits, which say so by quota id. They are
+      // not Gemini's quotas, so the shared limiter must not start a
+      // day-long block or suggest a paid API key.
+      if (e.fullText.contains('RoadmapXFreePlansPerMonth')) {
+        throw GeminiException(
+          'This month\'s free AI plans are used. They renew on the 1st. '
+          'You can still paste a plan or start from a template.',
+          debugDetails: details,
+        );
+      }
+      if (e.fullText.contains('RoadmapXRequestsPerDay')) {
+        throw GeminiException(
+          'Today\'s AI limit is reached. It resets at midnight UTC.',
+          debugDetails: details,
+        );
+      }
+      if (_api.usesProxy && failure == GeminiFailure.modelNotFound) {
+        // The server function isn't deployed; nothing to do with models.
+        throw GeminiException(
+          'AI isn\'t available right now. You can still paste a plan or '
+          'start from a template.',
+          debugDetails: details,
+        );
+      }
+      if (_api.usesProxy && failure == GeminiFailure.badKey) {
+        throw GeminiException(
+          'Your session has expired. Sign in again to use AI.',
+          debugDetails: details,
+        );
+      }
       if (failure == GeminiFailure.rateLimited) {
         // No blind retry: it only spends another request from the same
         // quota. Wait as long as Gemini asks, or switch to the free model

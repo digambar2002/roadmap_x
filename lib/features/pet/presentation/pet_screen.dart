@@ -691,9 +691,17 @@ class StoreSheet extends ConsumerWidget {
 
 /// Pick one of the five pets. Also used to switch pets later.
 class AdoptView extends ConsumerStatefulWidget {
-  const AdoptView({super.key, this.switching = false});
+  const AdoptView({
+    super.key,
+    this.switching = false,
+    this.popWhenAdopted = false,
+  });
 
   final bool switching;
+
+  /// For a first adoption shown in a sheet (onboarding) rather than as the
+  /// Pet tab's own content: close it once the pet is adopted.
+  final bool popWhenAdopted;
 
   @override
   ConsumerState<AdoptView> createState() => _AdoptViewState();
@@ -767,6 +775,9 @@ class _AdoptViewState extends ConsumerState<AdoptView> {
               if (context.mounted) Navigator.pop(context);
             } else {
               await controller.adopt(_selected);
+              if (widget.popWhenAdopted && context.mounted) {
+                Navigator.pop(context);
+              }
             }
           },
           style: FilledButton.styleFrom(

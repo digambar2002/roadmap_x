@@ -310,6 +310,8 @@ class DashboardScreen extends ConsumerWidget {
   }
 
   Future<void> _generateWithAi(BuildContext context, WidgetRef ref) async {
+    if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+    if (!context.mounted) return;
     if (!await PremiumGate.ensureAi(context, ref)) return;
     if (!context.mounted) return;
     final goalId = await showAiGoalSheet(context);

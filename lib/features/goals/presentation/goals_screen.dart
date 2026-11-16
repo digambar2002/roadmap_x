@@ -24,6 +24,7 @@ import '../../../core/layout/adaptive_sheet.dart';
 import '../../ai_goal/presentation/paste_plan_sheet.dart';
 import '../../../shared/widgets/walkthrough.dart';
 import '../../walkthrough/tours.dart';
+import '../../ai_goal/presentation/ai_plan_allowance_text.dart';
 import 'widgets/goal_pace_widgets.dart';
 
 class GoalsScreen extends ConsumerWidget {
@@ -183,11 +184,11 @@ class GoalsScreen extends ConsumerWidget {
                 '✦ Generate with AI',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
-              subtitle: const Text('Describe your goal, AI builds the plan'),
+              subtitle: const AiPlanAllowanceText(),
               onTap: () async {
                 Navigator.pop(context);
-                // Passing the AI gate implies premium, which carries
-                // unlimited goals — no separate cap check needed here.
+                if (!await PremiumGate.ensureGoalSlot(context, ref)) return;
+                if (!context.mounted) return;
                 if (!await PremiumGate.ensureAi(context, ref)) return;
                 if (!context.mounted) return;
                 _openAi(context);

@@ -47,6 +47,9 @@ void main() {
         GoRoute(
             path: '/premium',
             builder: (_, __) => const Scaffold(body: Text('account'))),
+        GoRoute(
+            path: '/first-goal',
+            builder: (_, __) => const Scaffold(body: Text('first goal'))),
       ],
     );
 
@@ -79,12 +82,12 @@ void main() {
       (tester) async {
     await pump(tester);
     expect(tester.takeException(), isNull);
-    expect(find.text('Goals that go somewhere'), findsOneWidget);
+    expect(find.text('Turn any goal into a plan'), findsOneWidget);
     expect(find.text('Get started'), findsNothing);
 
     await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
-    expect(find.text('Habits and a daily rhythm'), findsOneWidget);
+    expect(find.text('Know what to do each day'), findsOneWidget);
 
     await skipToSetup(tester);
     expect(find.text('Get started'), findsOneWidget);
@@ -92,7 +95,8 @@ void main() {
     expect(find.text('Sign in with email'), findsOneWidget);
   });
 
-  testWidgets('"Get started" saves the name, completes onboarding and opens '
+  testWidgets(
+      '"Get started" saves the name, completes onboarding and opens '
       'the app', (tester) async {
     await pump(tester);
     await skipToSetup(tester);
@@ -102,7 +106,8 @@ void main() {
 
     expect(Onboarding.isComplete(prefs), isTrue);
     expect(prefs.getString('user_name'), 'Dee');
-    expect(find.text('dashboard'), findsOneWidget);
+    // Not an empty app: the first-goal page opens over Today.
+    expect(find.text('first goal'), findsOneWidget);
   });
 
   testWidgets('"Sign in with email" goes to the account screen',

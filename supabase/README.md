@@ -144,22 +144,34 @@ as a signed-in admin. A static hosted page could only do that by embedding a
 `service_role` key, which bypasses every policy in the database and is unsafe
 to ship in any client.
 
-## AI for Premium users (Gemini proxy)
+## AI through the app's server (Gemini proxy)
 
-Premium users get AI without creating their own Gemini API key. The app
-calls the `gemini` Edge Function with the user's session; the function checks
-`is_premium()`, counts the request against a daily per-user cap
-(`use_ai_request()`, default 60/day), and forwards it to Gemini with the
-project's key, which never ships in the app. Users who enter their own key
-in Settings keep calling Google directly.
+Signed-in users get AI without creating their own Gemini API key. The app
+calls the `gemini` Edge Function with the user's session, and the function
+forwards the request to Gemini with the project's key, which never ships in
+the app. Each account has a limit:
 
-One-time setup:
+| Plan | Limit | Used for |
+|---|---|---|
+| Free | 3 requests a month (`AI_FREE_MONTHLY_CAP`) | AI-built plans only |
+| Premium | 60 requests a day (`AI_DAILY_CAP`) | Plans and the AI coach |
+
+Free requests always use the Flash model, and a request Gemini fails is
+given back. If you change `AI_FREE_MONTHLY_CAP`, change
+`Entitlements.freeAiPlansPerMonth` in the app to match, since the app shows
+"2 of 3 free AI plans left". Users who enter their own key in Settings keep
+calling Google directly.
+
+One-time setup (and again whenever `schema.sql` or the function changes):
 
 ```sh
-# 1. Run the latest schema.sql in the SQL editor (adds ai_usage + use_ai_request).
+# 1. Run the latest schema.sql in the SQL editor. It adds ai_usage and the
+#    functions use_ai_request, use_free_ai_request, ai_requests_this_month
+#    and refund_ai_request. It is safe to re-run.
 # 2. Store the key and deploy the function:
 supabase secrets set GEMINI_API_KEY=your-gemini-key
-supabase secrets set AI_DAILY_CAP=60          # optional
+supabase secrets set AI_DAILY_CAP=60           # optional
+supabase secrets set AI_FREE_MONTHLY_CAP=3     # optional
 supabase functions deploy gemini
 ```
 

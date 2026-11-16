@@ -13,6 +13,7 @@ import '../../features/analytics/presentation/analytics_screen.dart';
 import '../../features/admin/presentation/admin_screen.dart';
 import '../../features/habits/presentation/habits_screen.dart';
 import '../../features/onboarding/presentation/welcome_screen.dart';
+import '../../features/onboarding/presentation/first_goal_screen.dart';
 import '../../features/premium/presentation/premium_screen.dart';
 import '../../features/settings/presentation/settings_screen.dart';
 import '../../features/me/presentation/me_screen.dart';
@@ -150,6 +151,11 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/premium',
         builder: (context, state) => const PremiumScreen(),
+      ),
+      // The last step of onboarding, shown over Today.
+      GoRoute(
+        path: '/first-goal',
+        builder: (context, state) => const FirstGoalScreen(),
       ),
       GoRoute(
         path: '/focus-timer',
